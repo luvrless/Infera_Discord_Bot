@@ -60,15 +60,14 @@ export async function deliverUpdateNotices(client: InferaClient): Promise<void> 
   log.info({ version: row.version, recipients: recipients.length }, "delivering update notices");
   const embed = updateEmbed(note, client);
   for (const userId of recipients) {
-    const prefs = await service.preferences(userId).catch(() => ({ dmNotifications: true }));
-    if (!prefs.dmNotifications) {
-      await service.recordDelivery(row.id, userId, "skipped");
-      continue;
-    }
+    const prefs = await service.preferences(userId).catch(() => ({ dmNotifications: false }));
+    // DMs are opt-in. Skipped owners aren't recorded, so turning DMs on later
+    // still delivers the latest update on the next start.
+    if (!prefs.dmNotifications) continue;
     try {
       const user = await client.users.fetch(userId);
-      await user.send({ embeds: [embed] });
-      await service.recordDelivery(row.id, userId, "sent");
+      const message = await user.send({ embeds: [embed] });
+      await service.recordDelivery(row.id, userId, "sent", { channelId: message.channelId, messageId: message.id });
     } catch (error) {
       log.debug({ err: error, userId }, "could not DM update notice");
       await service.recordDelivery(row.id, userId, "failed");
