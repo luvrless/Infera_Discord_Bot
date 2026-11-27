@@ -1,0 +1,19 @@
+{
+  "name": "@infera/services",
+  "version": "1.0.0",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": ["dist"],
+  "scripts": {
+    "test": "tsx --test src/__tests__/infera.test.ts"
+  },
+  "dependencies": {
+    "@infera/database": "*",
+    "@infera/shared": "*",
+    "discord.js": "^14.16.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.9.0"
+  }
+}

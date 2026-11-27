@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "baseUrl": ".",
+    "paths": {
+      "@infera/shared": ["packages/shared/src/index.ts"],
+      "@infera/commands": ["packages/commands/src/index.ts"],
+      "@infera/services": ["packages/services/src/index.ts"],
+      "@infera/database": ["packages/database/src/index.ts"],
+      "@infera/integrations": ["packages/integrations/src/index.ts"]
+    }
+  }
+}

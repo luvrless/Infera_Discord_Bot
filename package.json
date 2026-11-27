@@ -1,0 +1,43 @@
+{
+  "name": "infera",
+  "version": "1.0.0",
+  "private": true,
+  "description": "INFERA - premium multi-server Discord bot platform",
+  "license": "UNLICENSED",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=20.11.0"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "tsc -b --clean",
+    "typecheck": "tsc -b --pretty false",
+    "dev": "npm run dev -w @infera/bot",
+    "dev:bot": "npm run dev -w @infera/bot",
+    "dev:api": "npm run dev -w @infera/api",
+    "dev:web": "npm run dev -w @infera/web",
+    "build:web": "npm run build -w @infera/web",
+    "dev:worker": "npm run dev -w @infera/worker",
+    "start": "npm run start -w @infera/bot",
+    "start:api": "npm run start -w @infera/api",
+    "start:worker": "npm run start -w @infera/worker",
+    "register": "npm run register -w @infera/bot",
+    "db:generate": "npm run generate -w @infera/database",
+    "db:generate:sqlite": "node packages/database/scripts/make-sqlite-schema.mjs && prisma generate --schema packages/database/prisma/schema.sqlite.prisma",
+    "db:push:sqlite": "node packages/database/scripts/make-sqlite-schema.mjs && prisma db push --schema packages/database/prisma/schema.sqlite.prisma --skip-generate",
+    "db:migrate": "npm run migrate -w @infera/database",
+    "db:deploy": "npm run migrate:deploy -w @infera/database",
+    "db:studio": "npm run studio -w @infera/database",
+    "db:seed": "npm run seed -w @infera/database",
+    "test": "npm run test -w @infera/commands",
+    "docs:generate": "npm run docs -w @infera/api"
+  },
+  "devDependencies": {
+    "@types/node": "^22.9.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3"
+  }
+}
