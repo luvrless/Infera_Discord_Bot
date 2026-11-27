@@ -1,4 +1,4 @@
-import type { DiscordGuild } from "@infera/services";
+import { guildMemberCount, type DiscordGuild } from "@infera/services";
 import {
   DashboardScope,
   ErrorCode,
@@ -210,7 +210,7 @@ export async function assertGuildAccess(
           name: botGuild.name,
           icon: botGuild.icon ?? null,
           ownerId: botGuild.owner_id,
-          memberCount: botGuild.member_count ?? 0,
+          memberCount: guildMemberCount(botGuild),
           locale: botGuild.preferred_locale ?? null,
           premiumTier: botGuild.premium_tier ?? 0,
         })

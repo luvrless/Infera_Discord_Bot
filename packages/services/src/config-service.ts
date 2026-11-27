@@ -96,7 +96,8 @@ export class GuildConfigService {
         name: guild.name,
         icon: guild.icon ?? null,
         ownerId: guild.ownerId ?? null,
-        memberCount: guild.memberCount ?? 0,
+        // Never overwrite a known count with "unknown".
+        ...(guild.memberCount !== undefined && guild.memberCount !== null ? { memberCount: guild.memberCount } : {}),
         locale: guild.locale ?? null,
         premiumTier: guild.premiumTier ?? 0,
         leftAt: null,

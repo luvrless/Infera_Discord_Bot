@@ -50,13 +50,22 @@ export interface DiscordGuild {
   banner?: string | null;
   description?: string | null;
   owner_id: string;
+  /** Only present on gateway payloads; REST returns approximate_member_count. */
   member_count?: number;
+  /** Present on REST responses fetched with `with_counts=true`. */
+  approximate_member_count?: number;
   premium_tier?: number;
   preferred_locale?: string;
   features?: string[];
   emojis?: Array<{ id: string; name: string | null; animated?: boolean }>;
   roles?: DiscordRole[];
   channels?: DiscordChannel[];
+}
+
+/** Member count from either a gateway or a REST (`with_counts`) guild payload. */
+export function guildMemberCount(guild: Pick<DiscordGuild, "member_count" | "approximate_member_count"> | null | undefined): number | undefined {
+  if (!guild) return undefined;
+  return guild.member_count ?? guild.approximate_member_count ?? undefined;
 }
 
 export interface DiscordMessage {

@@ -97,7 +97,7 @@ export type {
 export { AnalyticsService } from "./analytics-service";
 export { AuditService } from "./audit-service";
 export { GuildConfigService, MODULES } from "./config-service";
-export { DiscordApi } from "./discord-api";
+export { DiscordApi, guildMemberCount } from "./discord-api";
 export { EconomyService } from "./economy-service";
 export { GiveawayService } from "./giveaway-service";
 export { LevelingService, levelFromXp, xpForLevel } from "./leveling-service";

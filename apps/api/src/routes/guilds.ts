@@ -1,4 +1,5 @@
 import { ErrorCode, InferaError, configSchemaDocument, defaultConfig } from "@infera/shared";
+import { guildMemberCount } from "@infera/services";
 import type { FastifyPluginAsync } from "fastify";
 import { BASE_PATH, db, services } from "../lib/config";
 import {
@@ -77,7 +78,7 @@ export const guildRoutes: FastifyPluginAsync = async (app) => {
         banner: botGuild?.banner ?? null,
         description: botGuild?.description ?? null,
         ownerId: botGuild?.owner_id ?? null,
-        memberCount: botGuild?.member_count ?? 0,
+        memberCount: guildMemberCount(botGuild) ?? 0,
         premiumTier: botGuild?.premium_tier ?? 0,
         createdAt: new Date(Number(BigInt(guildId) >> 22n) + 1_420_070_400_000).toISOString(),
         botInstalled: access.botInstalled,
@@ -148,7 +149,7 @@ export const guildRoutes: FastifyPluginAsync = async (app) => {
       analytics,
       modules,
       stats: {
-        members: access.botGuild?.member_count ?? 0,
+        members: guildMemberCount(access.botGuild) ?? 0,
         levelingUsers,
         openTickets: ticketsOpen,
         activeGiveaways: giveawaysActive,
@@ -298,13 +299,13 @@ export const guildRoutes: FastifyPluginAsync = async (app) => {
         .replaceAll("{user_id}", access.session.user.id)
         .replaceAll("{server}", access.botGuild?.name ?? "")
         .replaceAll("{server_name}", access.botGuild?.name ?? "")
-        .replaceAll("{member_count}", String(access.botGuild?.member_count ?? 0))
+        .replaceAll("{member_count}", String(guildMemberCount(access.botGuild) ?? 0))
         .replaceAll("{server_icon}", access.botGuild?.icon ? `https://cdn.discordapp.com/icons/${guildId}/${access.botGuild.icon}.png` : "")
         .replaceAll("{created_at}", new Date(Number(BigInt(access.session.user.id) >> 22n) + 1_420_070_400_000).toISOString().slice(0, 10))
         .replaceAll("{joined_at}", new Date().toISOString().slice(0, 10))
         .replaceAll("{user.name}", access.session.user.username)
         .replaceAll("{user.id}", access.session.user.id)
-        .replaceAll("{memberCount}", String(access.botGuild?.member_count ?? 0));
+        .replaceAll("{memberCount}", String(guildMemberCount(access.botGuild) ?? 0));
     const content = replace(body.message ?? (values["welcome.message"] as string) ?? "");
     const embedEnabled = body.embed?.enabled ?? false;
     let messageId: string | null = null;
