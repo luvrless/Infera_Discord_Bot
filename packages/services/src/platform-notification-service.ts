@@ -70,10 +70,11 @@ export class PlatformNotificationService {
   async list(userId: string, limit = 50): Promise<{ notifications: PlatformNotificationView[]; unread: number }> {
     const [rows, reads] = await Promise.all([
       this.db.platformNotification.findMany({ orderBy: { createdAt: "desc" }, take: limit }),
-      this.db.platformNotificationRead.findMany({ where: { userId }, select: { notificationId: true } }),
+      this.db.platformNotificationRead.findMany({ where: { userId }, select: { notificationId: true, clearedAt: true } }),
     ]);
     const readIds = new Set(reads.map((row) => row.notificationId));
-    const notifications = rows.map((row) => ({
+    const clearedIds = new Set(reads.filter((row) => row.clearedAt).map((row) => row.notificationId));
+    const notifications = rows.filter((row) => !clearedIds.has(row.id)).map((row) => ({
       id: row.id,
       version: row.version,
       kind: row.kind,
@@ -103,12 +104,60 @@ export class PlatformNotificationService {
   }
 
   async markUnread(userId: string, notificationId: string): Promise<void> {
-    await this.db.platformNotificationRead.deleteMany({ where: { userId, notificationId } });
+    // Keep the row if it was cleared; only an un-cleared read is removed.
+    await this.db.platformNotificationRead.deleteMany({ where: { userId, notificationId, clearedAt: null } });
+  }
+
+  /** Hide notifications from this user's dashboard list. Nothing is deleted for anyone else. */
+  async clearFromDashboard(userId: string, ids: string[] | "all"): Promise<number> {
+    const targets =
+      ids === "all"
+        ? (await this.db.platformNotification.findMany({ select: { id: true } })).map((row) => row.id)
+        : ids.slice(0, 200);
+    const now = new Date();
+    let count = 0;
+    for (const notificationId of targets) {
+      await this.db.platformNotificationRead
+        .upsert({
+          where: { userId_notificationId: { userId, notificationId } },
+          create: { userId, notificationId, clearedAt: now },
+          update: { clearedAt: now },
+        })
+        .then(() => {
+          count += 1;
+        })
+        .catch(() => undefined);
+    }
+    return count;
+  }
+
+  /** DMs that were sent to this user (optionally only for some notifications). */
+  async sentDeliveries(userId: string, ids: string[] | "all") {
+    return this.db.platformNotificationDelivery.findMany({
+      where: { userId, status: "sent", ...(ids === "all" ? {} : { notificationId: { in: ids.slice(0, 200) } }) },
+    });
+  }
+
+  async titlesFor(ids: string[] | "all"): Promise<Map<string, string>> {
+    const rows = await this.db.platformNotification.findMany({
+      where: ids === "all" ? {} : { id: { in: ids.slice(0, 200) } },
+      select: { id: true, title: true },
+    });
+    return new Map(rows.map((row) => [row.id, row.title]));
+  }
+
+  async markDmDeleted(userId: string, notificationIds: string[]): Promise<void> {
+    if (notificationIds.length === 0) return;
+    await this.db.platformNotificationDelivery.updateMany({
+      where: { userId, notificationId: { in: notificationIds } },
+      data: { status: "deleted", messageId: null },
+    });
   }
 
   async preferences(userId: string): Promise<{ dmNotifications: boolean }> {
     const row = await this.db.userPreference.findUnique({ where: { userId } });
-    return { dmNotifications: row?.dmNotifications ?? true };
+    // DMs are opt-in: off until the user turns them on.
+    return { dmNotifications: row?.dmNotifications ?? false };
   }
 
   async setPreferences(userId: string, input: { dmNotifications: boolean }): Promise<{ dmNotifications: boolean }> {
@@ -133,9 +182,15 @@ export class PlatformNotificationService {
     return owners.filter((id) => !doneIds.has(id));
   }
 
-  async recordDelivery(notificationId: string, userId: string, status: "sent" | "skipped" | "failed"): Promise<void> {
+  async recordDelivery(
+    notificationId: string,
+    userId: string,
+    status: "sent" | "skipped" | "failed",
+    message?: { channelId: string; messageId: string },
+  ): Promise<void> {
+    const data = { status, channelId: message?.channelId ?? null, messageId: message?.messageId ?? null };
     await this.db.platformNotificationDelivery
-      .upsert({ where: { userId_notificationId: { userId, notificationId } }, create: { userId, notificationId, status }, update: { status } })
+      .upsert({ where: { userId_notificationId: { userId, notificationId } }, create: { userId, notificationId, ...data }, update: data })
       .catch(() => undefined);
   }
 

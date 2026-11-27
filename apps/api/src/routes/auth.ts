@@ -7,6 +7,7 @@ import {
   botStatus,
   guildListForSession,
 } from "../lib/auth";
+import { deleteUpdateDms } from "../lib/dm-cleanup";
 import { buildAuthorizeUrl, exchangeCode, fetchProfile, joinSupportServer } from "../lib/oauth";
 import {
   clearSessionCookie,
@@ -144,6 +145,34 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       throw new InferaError("Send ids, all or unread", { code: ErrorCode.VALIDATION_ERROR });
     }
     return services.platformNotifications.list(session.user.id);
+  });
+
+  // Clear notifications from the dashboard list, from Discord DMs, or both.
+  app.post(`${BASE_PATH}/me/updates/clear`, async (request) => {
+    const session = await requireSession(request);
+    const body = (request.body ?? {}) as { ids?: unknown; all?: unknown; dashboard?: unknown; dm?: unknown };
+    const ids: string[] | "all" =
+      body.all === true ? "all" : Array.isArray(body.ids) ? body.ids.filter((id): id is string => typeof id === "string") : [];
+    const dashboard = body.dashboard === true;
+    const dm = body.dm === true;
+    if ((ids !== "all" && ids.length === 0) || (!dashboard && !dm)) {
+      throw new InferaError("Choose notifications and where to clear them", { code: ErrorCode.VALIDATION_ERROR });
+    }
+    const userId = session.user.id;
+    let dmDeleted = 0;
+    if (dm) {
+      const [stored, titles] = await Promise.all([
+        services.platformNotifications.sentDeliveries(userId, ids),
+        services.platformNotifications.titlesFor(ids),
+      ]);
+      dmDeleted = await deleteUpdateDms(userId, { stored, titles: ids === "all" ? "all" : [...titles.values()] }).catch(() => 0);
+      await services.platformNotifications.markDmDeleted(
+        userId,
+        ids === "all" ? stored.map((row) => row.notificationId) : ids,
+      );
+    }
+    const dashboardCleared = dashboard ? await services.platformNotifications.clearFromDashboard(userId, ids) : 0;
+    return { ...(await services.platformNotifications.list(userId)), dmDeleted, dashboardCleared };
   });
 
   app.get(`${BASE_PATH}/me/preferences`, async (request) => {

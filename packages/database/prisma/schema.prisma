@@ -1028,6 +1028,8 @@ model PlatformNotificationRead {
   userId         String
   notificationId String
   readAt         DateTime @default(now())
+  /// Set when the user cleared the notification from their dashboard list.
+  clearedAt      DateTime?
 
   @@unique([userId, notificationId])
   @@index([userId])
@@ -1040,6 +1042,9 @@ model PlatformNotificationDelivery {
   userId         String
   notificationId String
   status         String   @default("sent")
+  /// DM channel and message, so the user can delete the DM from the dashboard.
+  channelId      String?
+  messageId      String?
   createdAt      DateTime @default(now())
 
   @@unique([userId, notificationId])
@@ -1048,8 +1053,8 @@ model PlatformNotificationDelivery {
 /// Per-user dashboard preferences (not tied to any server).
 model UserPreference {
   userId          String   @id
-  /// Receive platform update notifications as Discord DMs. They always appear on the dashboard.
-  dmNotifications Boolean  @default(true)
+  /// Receive platform update notifications as Discord DMs (off unless the user turns it on). They always appear on the dashboard.
+  dmNotifications Boolean  @default(false)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 }
