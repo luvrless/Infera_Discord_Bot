@@ -266,7 +266,7 @@ export const CONFIG_DEFINITIONS: ConfigDefinition[] = [
   num("leveling.voice_xp_rate", "leveling", 5, "XP per minute in voice.", { min: 0, max: 1000 }),
   num("leveling.xp_multiplier", "leveling", 1, "Global XP multiplier.", { min: 0, max: 10, integer: false }),
   num("leveling.daily_cap", "leveling", 5000, "Maximum XP per user per day. 0 disables.", { min: 0, max: 1_000_000 }),
-  enumOf("leveling.level_formula", "leveling", ["sqrt", "linear", "quadratic"], "sqrt", "XP curve used to compute levels."),
+  enumOf("leveling.level_formula", "leveling", ["balanced", "sqrt", "linear", "quadratic"], "balanced", "XP curve used to compute levels. Balanced: about 50 messages per level."),
   snowflake("leveling.announcement_channel", "leveling", "Channel for level-up announcements."),
   str(
     "leveling.announcement_message",

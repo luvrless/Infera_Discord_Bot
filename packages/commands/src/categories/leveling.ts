@@ -25,9 +25,13 @@ const leveling: CommandDefinition[] = [
       const target = ctx.args[0] ? await ctx.resolveMember(ctx.args[0]) : ctx.requireMember();
       const rank = await ctx.services.leveling.getRank(guildId, target.id);
       if (rank.totalXp === 0) return ctx.ok(ctx.t("commands.leveling.no_data"));
+      const cardColor = String(await ctx.services.config.getValue(guildId, "leveling.rank_card_color").catch(() => "#8B5CF6"));
+      const cardBackground = String(await ctx.services.config.getValue(guildId, "leveling.rank_card_background").catch(() => ""));
       return ctx.reply({
         embeds: [
           embed({
+            color: /^#[0-9a-fA-F]{6}$/.test(cardColor) ? Number.parseInt(cardColor.slice(1), 16) : undefined,
+            image: /^https:\/\//.test(cardBackground) ? cardBackground : undefined,
             title: `${target.user.tag}`,
             thumbnail: target.displayAvatarURL({ size: 256 }),
             fields: [

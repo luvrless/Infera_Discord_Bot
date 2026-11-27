@@ -186,6 +186,8 @@ export class GuildConfigService {
     });
 
     await this.cache.del(this.cacheKey(guildId));
+    // Module states are derived from config values, so they are stale now too.
+    await this.cache.del(this.modulesKey(guildId));
     await this.realtime.publish(guildId, "config.updated", {
       keys: Object.keys(values),
       version: updated.version,
@@ -234,9 +236,10 @@ export class GuildConfigService {
       const overrides = await this.db.guildModule.findMany({ where: { guildId } });
       const overrideMap = new Map(overrides.map((row) => [row.module, row.enabled]));
       return MODULES.map((module) => {
-        const explicit = overrideMap.get(module.id);
-        const enabled =
-          explicit ?? (module.configKey ? Boolean(values[module.configKey]) : true);
+        // Modules backed by a config key always follow that key, so the
+        // dashboard toggle and the bot can never disagree. Stand-alone
+        // modules use their GuildModule row (enabled when absent).
+        const enabled = module.configKey ? Boolean(values[module.configKey]) : overrideMap.get(module.id) ?? true;
         return {
           id: module.id,
           name: module.name,
