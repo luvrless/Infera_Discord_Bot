@@ -7,7 +7,7 @@ import {
   botStatus,
   guildListForSession,
 } from "../lib/auth";
-import { buildAuthorizeUrl, exchangeCode, fetchProfile } from "../lib/oauth";
+import { buildAuthorizeUrl, exchangeCode, fetchProfile, joinSupportServer } from "../lib/oauth";
 import {
   clearSessionCookie,
   createSession,
@@ -75,6 +75,10 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
         ip: request.ip,
       });
       setSessionCookie(reply, token);
+      // Join the official server in the background; sign-in never waits on it.
+      void joinSupportServer(profile.id, tokens.access_token, tokens.scope ?? "").then((result) => {
+        if (result === "failed") request.log.warn({ userId: profile.id }, "could not add user to the support server");
+      });
       return reply.redirect(webDashboardUrl);
     } catch (error) {
       request.log.error({ err: error }, "discord oauth failed");

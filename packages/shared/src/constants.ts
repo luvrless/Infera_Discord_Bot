@@ -5,7 +5,7 @@
 export const INFERA_NAME = "INFERA";
 export const INFERA_WEBSITE = "https://infera.wtf";
 export const INFERA_API_URL = "https://api.infera.wtf";
-export const INFERA_SUPPORT_SERVER = "https://discord.gg/infera";
+export const INFERA_SUPPORT_SERVER = "https://discord.gg/gFF6GxXVmJ";
 
 /** Brand accent used when a guild has not configured a colour. */
 export const BRAND_COLOR = 0x8b5cf6;

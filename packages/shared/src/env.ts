@@ -55,6 +55,9 @@ const envSchema = z.object({
   WEBHOOK_SIGNING_SECRET: z.string().min(16).default(""),
 
   WEB_APP_ORIGIN: z.string().default("http://localhost:3000"),
+  /** Official INFERA server. Users who sign in are added to it (guilds.join). */
+  SUPPORT_INVITE_CODE: z.string().default("gFF6GxXVmJ"),
+  SUPPORT_GUILD_ID: z.string().optional().transform((value) => (value && /^\d{17,20}$/.test(value.trim()) ? value.trim() : null)),
   API_CORS_ORIGINS: csvList,
 
   ROBLOX_API_BASE_URL: z.string().url().default("https://users.roblox.com"),
