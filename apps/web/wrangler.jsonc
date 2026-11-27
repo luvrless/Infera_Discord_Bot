@@ -2,6 +2,11 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "infera-wtf",
   "compatibility_date": "2024-11-01",
+  // Cloudflare's deploy step only runs `wrangler deploy`, so build the
+  // dashboard first. The API lives on its own subdomain in production.
+  "build": {
+    "command": "VITE_API_BASE=https://api.infera.wtf/v1 VITE_WS_URL=wss://api.infera.wtf/v1/ws npm run build"
+  },
   "assets": {
     "directory": "./dist",
     "not_found_handling": "single-page-application"
