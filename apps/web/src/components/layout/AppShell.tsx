@@ -8,6 +8,7 @@ import { useAuth } from "../../hooks/useAuth";
 import { useRealtime } from "../../hooks/useRealtime";
 import { Avatar, StatusDot, useClickOutside } from "../ui/primitives";
 import { PageSkeleton } from "../ui/states";
+import { ErrorBoundary } from "../ui/ErrorBoundary";
 import { CommandPalette } from "./CommandPalette";
 import { NotificationCenter } from "./NotificationCenter";
 import { MenuItem, Sidebar } from "./Sidebar";
@@ -187,9 +188,11 @@ export function AppShell() {
         </header>
 
         <main id="main" className="mx-auto w-full max-w-[1400px] px-4 pb-28 pt-6 sm:px-6 lg:px-8">
-          <Suspense fallback={<PageSkeleton />}>
-            <Outlet />
-          </Suspense>
+          <ErrorBoundary resetKey={location.pathname}>
+            <Suspense fallback={<PageSkeleton />}>
+              <Outlet />
+            </Suspense>
+          </ErrorBoundary>
         </main>
       </div>
 

@@ -3,6 +3,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import { App } from "./App";
+import { ErrorBoundary, reloadForNewBuild } from "./components/ui/ErrorBoundary";
 import { ToastProvider } from "./components/ui/toast";
 import { ApiError } from "./lib/api/client";
 import "./index.css";
@@ -25,12 +26,19 @@ const queryClient = new QueryClient({
   },
 });
 
+// A page file from an older deploy is gone: fetch the new build once.
+window.addEventListener("vite:preloadError", (event) => {
+  if (reloadForNewBuild()) event.preventDefault();
+});
+
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <ToastProvider>
-          <App />
+          <ErrorBoundary>
+            <App />
+          </ErrorBoundary>
         </ToastProvider>
       </BrowserRouter>
     </QueryClientProvider>

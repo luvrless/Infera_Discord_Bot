@@ -9,10 +9,20 @@ import { UNAUTHORIZED_EVENT, isUnauthorized } from "./lib/api/client";
 import { useSessionQuery } from "./lib/api/auth";
 import { keys } from "./lib/api/keys";
 import { ErrorState } from "./components/ui/states";
+import { isChunkError, reloadForNewBuild } from "./components/ui/ErrorBoundary";
 
 /** Lazy-load a named export so each page group is its own chunk. */
 function page<T extends Record<string, unknown>>(loader: () => Promise<T>, name: keyof T) {
-  return lazy(() => loader().then((module) => ({ default: module[name] as ComponentType })));
+  return lazy(() =>
+    loader().then(
+      (module) => ({ default: module[name] as ComponentType }),
+      (error: unknown) => {
+        // The chunk belongs to an older deploy: reload once to get the new build.
+        if (isChunkError(error)) reloadForNewBuild();
+        throw error;
+      },
+    ),
+  );
 }
 
 const account = () => import("./pages/account");
