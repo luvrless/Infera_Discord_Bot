@@ -25,7 +25,9 @@ function cookieOptions() {
     sameSite: "lax" as const,
     secure: env.NODE_ENV === "production",
     path: "/",
-    maxAge: Math.floor(SESSION_TTL_MS / 1000),
+    // The browser keeps the cookie for 400 days (the maximum browsers allow);
+    // the server-side rolling expiry decides whether the session is valid.
+    maxAge: 400 * 24 * 60 * 60,
   };
 }
 
@@ -93,8 +95,11 @@ export async function readSession(request: FastifyRequest): Promise<SessionConte
   const user = await db.user.findUnique({ where: { id: row.userId } });
   if (!user) return null;
   if (Date.now() - row.lastUsedAt.getTime() > 5 * 60_000) {
+    // Rolling session: each use extends the expiry window.
+    const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
+    row.expiresAt = expiresAt;
     void db.oAuthSession
-      .update({ where: { id: row.id }, data: { lastUsedAt: new Date() } })
+      .update({ where: { id: row.id }, data: { lastUsedAt: new Date(), expiresAt } })
       .catch(() => undefined);
   }
   return { row, user };

@@ -78,6 +78,26 @@ export class GuildConfigService {
     return `infera:guild:${guildId}:modules:v1`;
   }
 
+  private commandsKey(guildId: string): string {
+    return `infera:guild:${guildId}:command-overrides:v1`;
+  }
+
+  /** Dashboard command overrides (enabled / level / cooldown) for one server. */
+  async getCommandOverrides(
+    guildId: string,
+  ): Promise<Record<string, { enabled: boolean | null; level: number | null; cooldownMs: number | null }>> {
+    return this.cache.getOrSet(this.commandsKey(guildId), 60, async () => {
+      const rows = await this.db.commandOverride.findMany({ where: { guildId } });
+      return Object.fromEntries(
+        rows.map((row) => [row.commandName, { enabled: row.enabled, level: row.level, cooldownMs: row.cooldownMs }]),
+      );
+    });
+  }
+
+  async invalidateCommandOverrides(guildId: string): Promise<void> {
+    await this.cache.del(this.commandsKey(guildId));
+  }
+
   /** Ensure the guild row and configuration row exist. */
   async ensureGuild(guild: GuildIdentity): Promise<void> {
     await this.db.guild.upsert({
@@ -96,7 +116,8 @@ export class GuildConfigService {
         name: guild.name,
         icon: guild.icon ?? null,
         ownerId: guild.ownerId ?? null,
-        memberCount: guild.memberCount ?? 0,
+        // Never overwrite a known count with "unknown".
+        ...(guild.memberCount !== undefined && guild.memberCount !== null ? { memberCount: guild.memberCount } : {}),
         locale: guild.locale ?? null,
         premiumTier: guild.premiumTier ?? 0,
         leftAt: null,
@@ -186,6 +207,8 @@ export class GuildConfigService {
     });
 
     await this.cache.del(this.cacheKey(guildId));
+    // Module states are derived from config values, so they are stale now too.
+    await this.cache.del(this.modulesKey(guildId));
     await this.realtime.publish(guildId, "config.updated", {
       keys: Object.keys(values),
       version: updated.version,
@@ -234,9 +257,10 @@ export class GuildConfigService {
       const overrides = await this.db.guildModule.findMany({ where: { guildId } });
       const overrideMap = new Map(overrides.map((row) => [row.module, row.enabled]));
       return MODULES.map((module) => {
-        const explicit = overrideMap.get(module.id);
-        const enabled =
-          explicit ?? (module.configKey ? Boolean(values[module.configKey]) : true);
+        // Modules backed by a config key always follow that key, so the
+        // dashboard toggle and the bot can never disagree. Stand-alone
+        // modules use their GuildModule row (enabled when absent).
+        const enabled = module.configKey ? Boolean(values[module.configKey]) : overrideMap.get(module.id) ?? true;
         return {
           id: module.id,
           name: module.name,

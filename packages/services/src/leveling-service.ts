@@ -6,19 +6,24 @@ import type { DiscordApi } from "./discord-api";
 import type { RealtimeService } from "./realtime-service";
 import { paginationArgs, type Paginated } from "./types";
 
-export type LevelFormula = "sqrt" | "linear" | "quadratic";
+export type LevelFormula = "balanced" | "sqrt" | "linear" | "quadratic";
 
 /** Total XP required to reach `level`. */
 export function xpForLevel(level: number, formula: LevelFormula): number {
   const l = Math.max(0, Math.floor(level));
   switch (formula) {
+    case "balanced":
+      // Level 1 costs 1,000 XP (about 50 messages at the default 15–25 XP)
+      // and every level after costs 10 XP more, so progression stays steady.
+      return 1000 * l + 5 * l * (l - 1);
     case "linear":
       return 100 * l;
     case "quadratic":
       return 50 * l * l + 50 * l;
     case "sqrt":
-    default:
       return 100 * l * l;
+    default:
+      return 1000 * l + 5 * l * (l - 1);
   }
 }
 
@@ -50,7 +55,8 @@ export class LevelingService {
   ) {}
 
   private async formula(guildId: string): Promise<LevelFormula> {
-    return this.config.getValue<LevelFormula>(guildId, "leveling.level_formula");
+    const value = await this.config.getValue<string>(guildId, "leveling.level_formula");
+    return (["balanced", "sqrt", "linear", "quadratic"] as const).includes(value as LevelFormula) ? (value as LevelFormula) : "balanced";
   }
 
   async isExcluded(guildId: string, userId: string, channelId: string | null, roleIds: string[] = []): Promise<boolean> {

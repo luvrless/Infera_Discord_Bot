@@ -1002,3 +1002,54 @@ model SystemEvent {
   @@index([createdAt])
   @@index([guildId, createdAt])
 }
+
+// ---------------------------------------------------------------------------
+// Platform update notifications (one per release, shown to every user)
+// ---------------------------------------------------------------------------
+
+/// A platform-wide update (new features, fixes, maintenance). Created
+/// automatically once per release version; never removable per server.
+model PlatformNotification {
+  id        String   @id @default(cuid())
+  /// Release identifier from packages/shared/src/changelog.ts (unique: one notification per release).
+  version   String   @unique
+  kind      String   @default("update")
+  title     String
+  /// JSON: { summary, features[], fixes[], system[], downtime? }
+  body      String   @default("{}")
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+/// A user has read a platform notification on the dashboard.
+model PlatformNotificationRead {
+  id             String   @id @default(cuid())
+  userId         String
+  notificationId String
+  readAt         DateTime @default(now())
+
+  @@unique([userId, notificationId])
+  @@index([userId])
+}
+
+/// A platform notification was delivered (or skipped) as a DM to a server owner.
+/// Prevents duplicate DMs when the bot restarts.
+model PlatformNotificationDelivery {
+  id             String   @id @default(cuid())
+  userId         String
+  notificationId String
+  status         String   @default("sent")
+  createdAt      DateTime @default(now())
+
+  @@unique([userId, notificationId])
+}
+
+/// Per-user dashboard preferences (not tied to any server).
+model UserPreference {
+  userId          String   @id
+  /// Receive platform update notifications as Discord DMs. They always appear on the dashboard.
+  dmNotifications Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}

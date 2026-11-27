@@ -4,6 +4,7 @@ import type { InferaClient } from "../client";
 import { syncCommandDefinitions } from "../lib/command-sync";
 import { ensureGuild } from "../lib/guilds";
 import { startHeartbeat } from "../lib/heartbeat";
+import { deliverUpdateNotices } from "../lib/update-notices";
 
 const log = createLogger("bot:ready");
 
@@ -38,6 +39,13 @@ export async function onReady(client: InferaClient): Promise<void> {
   }
 
   startHeartbeat(client);
+
+  // Release-note DMs to server owners run in the background and never block startup.
+  setTimeout(() => {
+    deliverUpdateNotices(client).catch((error: unknown) =>
+      log.warn({ err: error }, "could not deliver update notices"),
+    );
+  }, 30_000);
 
   await client.services.realtime
     .publish(null, "bot.ready", {

@@ -81,6 +81,7 @@ const community: CommandDefinition[] = [
         userId: ctx.user.id,
         content,
         anonymous,
+        author: { name: ctx.member?.displayName ?? ctx.user.username, avatarUrl: ctx.user.displayAvatarURL({ size: 256 }) },
       });
       return ctx.ok(`Suggestion submitted (ID \`${suggestion.id}\`).`);
     },

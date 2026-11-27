@@ -48,7 +48,7 @@ export function buildAuthorizeUrl(state: string): string {
   url.searchParams.set("client_id", env.DISCORD_CLIENT_ID);
   url.searchParams.set("response_type", "code");
   url.searchParams.set("redirect_uri", env.DISCORD_REDIRECT_URI);
-  url.searchParams.set("scope", "identify guilds");
+  url.searchParams.set("scope", "identify guilds guilds.join");
   url.searchParams.set("state", state);
   url.searchParams.set("prompt", "consent");
   return url.toString();
@@ -91,4 +91,47 @@ export function fetchUserGuilds(accessToken: string): Promise<DiscordGuildSummar
   return request<DiscordGuildSummary[]>(`${DISCORD_API}/users/@me/guilds`, {
     headers: { authorization: `Bearer ${accessToken}` },
   });
+}
+
+let supportGuildId: string | null | undefined;
+
+/** The official server's id, from SUPPORT_GUILD_ID or resolved once from the invite. */
+async function resolveSupportGuild(): Promise<string | null> {
+  if (env.SUPPORT_GUILD_ID) return env.SUPPORT_GUILD_ID;
+  if (supportGuildId !== undefined) return supportGuildId;
+  try {
+    const invite = await request<{ guild?: { id: string } }>(
+      `${DISCORD_API}/invites/${encodeURIComponent(env.SUPPORT_INVITE_CODE)}`,
+      { headers: { authorization: `Bot ${env.DISCORD_TOKEN}` } },
+    );
+    supportGuildId = invite.guild?.id ?? null;
+  } catch {
+    // Retry on a later sign-in.
+    return null;
+  }
+  return supportGuildId;
+}
+
+/**
+ * Add the signed-in user to the official INFERA server. Needs the guilds.join
+ * scope and the bot in that server with Create Invite. Users who are already
+ * members are left untouched (Discord answers 204). Never throws.
+ */
+export async function joinSupportServer(userId: string, accessToken: string, scope: string): Promise<"joined" | "member" | "skipped" | "failed"> {
+  if (!scope.split(" ").includes("guilds.join")) return "skipped";
+  const guildId = await resolveSupportGuild();
+  if (!guildId) return "failed";
+  try {
+    const response = await fetch(`${DISCORD_API}/guilds/${guildId}/members/${userId}`, {
+      method: "PUT",
+      headers: { authorization: `Bot ${env.DISCORD_TOKEN}`, "content-type": "application/json" },
+      body: JSON.stringify({ access_token: accessToken }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (response.status === 201) return "joined";
+    if (response.status === 204) return "member";
+    return "failed";
+  } catch {
+    return "failed";
+  }
 }

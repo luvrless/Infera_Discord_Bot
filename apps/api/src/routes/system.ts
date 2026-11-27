@@ -98,6 +98,8 @@ export const systemRoutes: FastifyPluginAsync = async (app) => {
       create: { guildId, commandName, ...data },
       update: data,
     });
+    // The bot reads overrides through this cache; drop it so the change applies now.
+    await services.config.invalidateCommandOverrides(guildId).catch(() => undefined);
     await services.audit.record({
       guildId,
       actorId: access.session.user.id,

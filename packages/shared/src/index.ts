@@ -10,3 +10,4 @@ export * from "./cache";
 export * from "./config/types";
 export * from "./config/registry";
 export * from "./localization";
+export * from "./changelog";

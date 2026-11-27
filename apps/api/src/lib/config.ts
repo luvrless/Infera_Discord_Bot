@@ -21,7 +21,11 @@ export const services: ServiceContainer = createServices({
 
 export const SESSION_COOKIE = "infera_session";
 export const STATE_COOKIE = "infera_oauth_state";
-export const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+/**
+ * Sessions are rolling: every use pushes the expiry forward by this window, so
+ * an active user is never signed out. Only a session unused for this long ends.
+ */
+export const SESSION_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 export const BASE_PATH = env.API_BASE_PATH;
 
 export const allowedOrigins = new Set(
