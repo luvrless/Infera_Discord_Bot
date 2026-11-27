@@ -98,10 +98,14 @@ export function LoginPage() {
           </a>
           <ul className="mt-5 space-y-2 border-t border-ink-700 pt-4 text-xs text-zinc-500">
             <li className="flex items-start gap-2">
-              <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-400" /> Your session is an HttpOnly cookie — no tokens are stored in the browser.
+              <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-400" />
+              <span>Your session is an HttpOnly cookie — no tokens are stored in the browser.</span>
             </li>
             <li className="flex items-start gap-2">
-              <KeyRound className="mt-0.5 h-3.5 w-3.5 shrink-0 text-zinc-500" /> INFERA requests the <span className="font-mono">identify</span> and <span className="font-mono">guilds</span> scopes only.
+              <KeyRound className="mt-0.5 h-3.5 w-3.5 shrink-0 text-zinc-500" />
+              <span>
+                INFERA requests the <span className="font-mono">identify</span> and <span className="font-mono">guilds</span> scopes only.
+              </span>
             </li>
           </ul>
         </div>
