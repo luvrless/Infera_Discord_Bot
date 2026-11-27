@@ -123,12 +123,22 @@ export const automationRoutes: FastifyPluginAsync = async (app) => {
     if (runAt.getTime() > Date.now() + 365 * 24 * 60 * 60 * 1000) {
       throw new InferaError("Schedules cannot be more than a year away", { code: ErrorCode.VALIDATION_ERROR });
     }
-    const content = typeof body.content === "string" ? body.content.trim().slice(0, 2000) : "";
+    const style = body.style === "embed" ? "embed" : "text";
+    // Embeds allow a longer body (4096) than plain messages (2000).
+    const content = typeof body.content === "string" ? body.content.trim().slice(0, style === "embed" ? 4096 : 2000) : "";
     if (!content) throw new InferaError("Write the message to schedule", { code: ErrorCode.VALIDATION_ERROR });
+    const embedTitle = typeof body.embedTitle === "string" ? body.embedTitle.trim().slice(0, 256) : "";
+    const embedColor = typeof body.embedColor === "string" && /^#[0-9a-fA-F]{6}$/.test(body.embedColor) ? body.embedColor : "#8B5CF6";
     const task = await services.scheduler.schedule({
       guildId,
       type: "message",
-      payload: { channelId, content, userId: access.session.user.id },
+      payload: {
+        channelId,
+        content,
+        userId: access.session.user.id,
+        style,
+        ...(style === "embed" ? { embedTitle, embedColor } : {}),
+      },
       runAt,
     });
     await services.audit.record({
@@ -136,7 +146,7 @@ export const automationRoutes: FastifyPluginAsync = async (app) => {
       actorId: access.session.user.id,
       action: "scheduled-message.create",
       targetId: task.id,
-      metadata: { channelId, runAt: runAt.toISOString() },
+      metadata: { channelId, runAt: runAt.toISOString(), style },
     });
     return { task };
   });

@@ -73,6 +73,16 @@ export class SchedulerService {
         if (!/^\d{17,20}$/.test(channelId) || !content.trim()) {
           throw new Error("scheduled message is missing a channel or content");
         }
+        if (payload.style === "embed") {
+          const color = typeof payload.embedColor === "string" && /^#[0-9a-fA-F]{6}$/.test(payload.embedColor) ? Number.parseInt(payload.embedColor.slice(1), 16) : 0x8b5cf6;
+          const title = typeof payload.embedTitle === "string" ? payload.embedTitle.slice(0, 256) : "";
+          await this.discord.sendMessage(channelId, {
+            embeds: [{ ...(title ? { title } : {}), description: content.slice(0, 4096), color, timestamp: new Date().toISOString() }],
+            allowed_mentions: { parse: [] },
+          });
+          return;
+        }
+        // Plain text (also every message scheduled before styles existed).
         await this.discord.sendMessage(channelId, {
           content: content.slice(0, 2000),
           allowed_mentions: { parse: [] },
@@ -104,7 +114,7 @@ export class SchedulerService {
     });
   }
 
-  async listMessageTasks(guildId: string): Promise<Array<{ id: string; runAt: Date | null; channelId: string; content: string; userId: string }>> {
+  async listMessageTasks(guildId: string): Promise<Array<{ id: string; runAt: Date | null; channelId: string; content: string; userId: string; style: "text" | "embed"; embedTitle: string | null }>> {
     const tasks = await this.db.scheduledTask.findMany({
       where: { guildId, type: "message", status: "pending" },
       orderBy: { runAt: "asc" },
@@ -118,6 +128,8 @@ export class SchedulerService {
         channelId: String(payload.channelId ?? ""),
         content: String(payload.content ?? ""),
         userId: String(payload.userId ?? ""),
+        style: payload.style === "embed" ? "embed" : "text",
+        embedTitle: typeof payload.embedTitle === "string" ? payload.embedTitle : null,
       };
     });
   }

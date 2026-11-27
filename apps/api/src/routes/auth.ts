@@ -1,6 +1,6 @@
 import { ErrorCode, InferaError } from "@infera/shared";
 import type { FastifyPluginAsync } from "fastify";
-import { BASE_PATH, STATE_COOKIE, db, env } from "../lib/config";
+import { BASE_PATH, STATE_COOKIE, db, env, services } from "../lib/config";
 import { randomToken } from "../lib/crypto";
 import {
   assertGuildAccess,
@@ -115,6 +115,45 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       scopes: access.scopes,
       botInstalled: access.botInstalled,
     };
+  });
+
+  // ------------------------------------------------- platform updates
+  app.get(`${BASE_PATH}/me/updates`, async (request) => {
+    const session = await requireSession(request);
+    await services.platformNotifications.publishLatest().catch(() => null);
+    return services.platformNotifications.list(session.user.id);
+  });
+
+  app.post(`${BASE_PATH}/me/updates/read`, async (request) => {
+    const session = await requireSession(request);
+    const body = (request.body ?? {}) as { ids?: unknown; all?: unknown; unread?: unknown };
+    if (typeof body.unread === "string") {
+      await services.platformNotifications.markUnread(session.user.id, body.unread);
+    } else if (body.all === true) {
+      await services.platformNotifications.markRead(session.user.id, "all");
+    } else if (Array.isArray(body.ids)) {
+      await services.platformNotifications.markRead(
+        session.user.id,
+        body.ids.filter((id): id is string => typeof id === "string"),
+      );
+    } else {
+      throw new InferaError("Send ids, all or unread", { code: ErrorCode.VALIDATION_ERROR });
+    }
+    return services.platformNotifications.list(session.user.id);
+  });
+
+  app.get(`${BASE_PATH}/me/preferences`, async (request) => {
+    const session = await requireSession(request);
+    return services.platformNotifications.preferences(session.user.id);
+  });
+
+  app.patch(`${BASE_PATH}/me/preferences`, async (request) => {
+    const session = await requireSession(request);
+    const body = (request.body ?? {}) as { dmNotifications?: unknown };
+    if (typeof body.dmNotifications !== "boolean") {
+      throw new InferaError("dmNotifications must be true or false", { code: ErrorCode.VALIDATION_ERROR });
+    }
+    return services.platformNotifications.setPreferences(session.user.id, { dmNotifications: body.dmNotifications });
   });
 
   app.post(`${BASE_PATH}/auth/logout`, async (request, reply) => {

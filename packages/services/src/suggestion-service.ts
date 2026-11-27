@@ -19,7 +19,14 @@ export class SuggestionService {
     }
   }
 
-  async create(input: { guildId: string; userId: string; content: string; anonymous?: boolean }): Promise<Suggestion> {
+  async create(input: {
+    guildId: string;
+    userId: string;
+    content: string;
+    anonymous?: boolean;
+    /** Shown on the suggestion embed (unless anonymous). */
+    author?: { name: string; avatarUrl?: string | null };
+  }): Promise<Suggestion> {
     await this.assertEnabled(input.guildId);
     const channelId = await this.config.getValue<string | null>(input.guildId, "suggestions.channel_id");
     if (!channelId) {
@@ -42,8 +49,14 @@ export class SuggestionService {
       const message = await this.discord.sendMessage(channelId, {
         embeds: [
           {
-            author: { name: anonymous ? "Anonymous suggestion" : "New suggestion" },
-            description: suggestion.content,
+            author: anonymous
+              ? { name: "Anonymous suggestion" }
+              : {
+                  name: input.author?.name ? `Suggestion from ${input.author.name}` : "New suggestion",
+                  ...(input.author?.avatarUrl ? { icon_url: input.author.avatarUrl } : {}),
+                },
+            ...(!anonymous && input.author?.avatarUrl ? { thumbnail: { url: input.author.avatarUrl } } : {}),
+            description: anonymous ? suggestion.content : `${suggestion.content}\n\n**Suggested by** <@${input.userId}>`,
             color: 0x8b5cf6,
             footer: { text: `Suggestion ${suggestion.id}` },
             timestamp: new Date().toISOString(),
