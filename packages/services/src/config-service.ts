@@ -78,6 +78,26 @@ export class GuildConfigService {
     return `infera:guild:${guildId}:modules:v1`;
   }
 
+  private commandsKey(guildId: string): string {
+    return `infera:guild:${guildId}:command-overrides:v1`;
+  }
+
+  /** Dashboard command overrides (enabled / level / cooldown) for one server. */
+  async getCommandOverrides(
+    guildId: string,
+  ): Promise<Record<string, { enabled: boolean | null; level: number | null; cooldownMs: number | null }>> {
+    return this.cache.getOrSet(this.commandsKey(guildId), 60, async () => {
+      const rows = await this.db.commandOverride.findMany({ where: { guildId } });
+      return Object.fromEntries(
+        rows.map((row) => [row.commandName, { enabled: row.enabled, level: row.level, cooldownMs: row.cooldownMs }]),
+      );
+    });
+  }
+
+  async invalidateCommandOverrides(guildId: string): Promise<void> {
+    await this.cache.del(this.commandsKey(guildId));
+  }
+
   /** Ensure the guild row and configuration row exist. */
   async ensureGuild(guild: GuildIdentity): Promise<void> {
     await this.db.guild.upsert({

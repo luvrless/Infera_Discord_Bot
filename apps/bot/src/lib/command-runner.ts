@@ -65,6 +65,7 @@ export async function runCommand(
   const guildId = context.guildId;
   let success = false;
   let errorCode: string | null = null;
+  let overrideCooldownMs: number | null = null;
 
   try {
     if (command.ownerOnly && !isPlatformOwner(context.user.id)) {
@@ -90,12 +91,25 @@ export async function runCommand(
         });
       }
 
+      // Commands disabled on the dashboard are blocked for everyone, for both
+      // prefix and slash use.
+      const override = (await client.services.config.getCommandOverrides(guildId).catch(() => ({})) as Record<
+        string,
+        { enabled: boolean | null; level: number | null; cooldownMs: number | null } | undefined
+      >)[command.name];
+      if (override?.enabled === false) {
+        throw new InferaError(`The ${command.name} command is disabled in this server`, {
+          code: ErrorCode.FEATURE_DISABLED,
+        });
+      }
+      if (typeof override?.cooldownMs === "number") overrideCooldownMs = override.cooldownMs;
+
       const check = await client.services.permissions.checkCommand(
         guildId,
         context.channelId,
         toPermissionInput(member),
         command.name,
-        command.level ?? PermissionLevel.Member,
+        typeof override?.level === "number" ? (override.level as PermissionLevel) : (command.level ?? PermissionLevel.Member),
       );
       if (!check.allowed) {
         throw new InferaError("You do not have permission to use this command", {
@@ -122,7 +136,7 @@ export async function runCommand(
     }
 
     const cooldownKey = `${guildId ?? "dm"}:${context.user.id}:${command.name}`;
-    const cooldownMs = command.cooldownMs ?? 3_000;
+    const cooldownMs = overrideCooldownMs ?? command.cooldownMs ?? 3_000;
     const expiresAt = cooldowns.get(cooldownKey) ?? 0;
     if (expiresAt > Date.now()) {
       throw new InferaError("This command is on cooldown", {
