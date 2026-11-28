@@ -1,4 +1,4 @@
-import { createLogger } from "@infera/shared";
+import { DEFAULT_FORM_QUESTION, createLogger } from "@infera/shared";
 import {
   LabelBuilder,
   ModalBuilder,
@@ -17,9 +17,14 @@ const log = createLogger("bot:tickets");
 
 type Category = Awaited<ReturnType<InferaClient["services"]["tickets"]["category"]>>;
 
-function formModal(category: Category): ModalBuilder {
+function questionsFor(category: Category, forceForm: boolean) {
+  if (category.settings.questions.length > 0) return category.settings.questions.slice(0, 5);
+  return forceForm ? [DEFAULT_FORM_QUESTION] : [];
+}
+
+function formModal(category: Category, forceForm: boolean): ModalBuilder {
   const modal = new ModalBuilder().setCustomId(`tkt:f:${category.id}`).setTitle(category.name.slice(0, 45) || "Open a ticket");
-  for (const question of category.settings.questions.slice(0, 5)) {
+  for (const question of questionsFor(category, forceForm)) {
     const label = new LabelBuilder().setLabel(question.label.slice(0, 45));
     if (question.description) label.setDescription(question.description.slice(0, 100));
     if ((question.type === "select" || question.type === "multi") && question.options.length > 0) {
@@ -57,9 +62,12 @@ async function openTicket(
     const ticket = await client.services.tickets.create({
       guildId: interaction.guildId,
       userId: interaction.user.id,
-      username: interaction.user.username,
+      username: interaction.member.displayName || interaction.user.username,
       categoryId: category.id,
       answers,
+      avatarUrl: interaction.user.displayAvatarURL({ size: 256 }),
+      accountCreatedAt: interaction.user.createdTimestamp,
+      joinedAt: interaction.member.joinedTimestamp ?? null,
     });
     await interaction.editReply({ content: `Your ticket is ready: <#${ticket.channelId}>` });
   } catch (error) {
@@ -71,14 +79,15 @@ async function startCategory(
   client: InferaClient,
   interaction: ButtonInteraction<"cached"> | StringSelectMenuInteraction<"cached">,
   categoryId: string,
+  forceForm = false,
 ): Promise<void> {
   const category = await client.services.tickets.category(interaction.guildId, categoryId).catch(() => null);
   if (!category) {
     await interaction.reply({ content: "That ticket option no longer exists.", ephemeral: true });
     return;
   }
-  if (category.settings.questions.length > 0) {
-    await interaction.showModal(formModal(category));
+  if (questionsFor(category, forceForm).length > 0) {
+    await interaction.showModal(formModal(category, forceForm));
     return;
   }
   await openTicket(client, interaction, category);
@@ -130,6 +139,10 @@ export async function handleTicketInteraction(client: InferaClient, interaction:
       await startCategory(client, interaction, interaction.customId.slice(6));
       return true;
     }
+    if (interaction.isButton() && interaction.customId.startsWith("tkt:fc:")) {
+      await startCategory(client, interaction, interaction.customId.slice(7), true);
+      return true;
+    }
     if (interaction.isStringSelectMenu() && interaction.customId.startsWith("tkt:s:")) {
       const categoryId = interaction.values[0];
       if (categoryId) await startCategory(client, interaction, categoryId);
@@ -141,7 +154,8 @@ export async function handleTicketInteraction(client: InferaClient, interaction:
     // Form submitted.
     if (interaction.isModalSubmit() && interaction.customId.startsWith("tkt:f:")) {
       const category = await tickets.category(interaction.guildId, interaction.customId.slice(6));
-      const answers = category.settings.questions.map((question) => {
+      const questions = category.settings.questions.length ? category.settings.questions : [DEFAULT_FORM_QUESTION];
+      const answers = questions.map((question) => {
         let answer = "";
         if (question.type === "select" || question.type === "multi") {
           const values = interaction.fields.getStringSelectValues(question.id);

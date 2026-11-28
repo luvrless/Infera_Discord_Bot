@@ -81,6 +81,19 @@ export interface TicketPanelConfig {
 
 export const MAX_FORM_QUESTIONS = 5;
 
+/** Used by the Formulary style when an option has no questions of its own. */
+export const DEFAULT_FORM_QUESTION: TicketQuestion = {
+  id: "details",
+  label: "How can we help?",
+  type: "paragraph",
+  description: "",
+  placeholder: "Describe your request with as much detail as possible",
+  required: true,
+  min: 10,
+  max: 2000,
+  options: [],
+};
+
 const SNOWFLAKE = /^\d{17,20}$/;
 const HEX = /^#[0-9a-fA-F]{6}$/;
 const URL_RE = /^https?:\/\/\S+$/;
@@ -251,7 +264,7 @@ export function buildPanelMessage(
       type: 2,
       style: BUTTON_STYLE[category.settings.buttonStyle],
       label: (category.settings.buttonLabel || category.name).slice(0, 80),
-      custom_id: `tkt:c:${category.id}`,
+      custom_id: panel.style === "form" ? `tkt:fc:${category.id}` : `tkt:c:${category.id}`,
       ...(parseEmoji(category.emoji) ? { emoji: parseEmoji(category.emoji) } : {}),
     }));
     components = [];

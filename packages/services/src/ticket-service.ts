@@ -21,6 +21,9 @@ const ATTACH_FILES = 1n << 15n;
 const EMBED_LINKS = 1n << 14n;
 const PRIORITIES = ["low", "normal", "high", "urgent"] as const;
 const PRIORITY_COLOR: Record<string, number> = { low: 0x64748b, normal: 0x3b82f6, high: 0xf59e0b, urgent: 0xef4444 };
+const PRIORITY_LABEL: Record<string, string> = { low: "⚪ Low", normal: "🔵 Normal", high: "🟠 High", urgent: "🔴 Urgent" };
+const ts = (ms: number | null | undefined) => (ms ? `<t:${Math.floor(ms / 1000)}:R>` : "Unknown");
+const quote = (text: string) => (text.trim() ? text.trim().split("\n").map((line) => `> ${line}`).join("\n") : "> *No answer*");
 
 export interface CreateTicketInput {
   guildId: string;
@@ -30,6 +33,10 @@ export interface CreateTicketInput {
   priority?: "low" | "normal" | "high" | "urgent";
   categoryId?: string | null;
   answers?: Array<{ question: string; answer: string }>;
+  /** Shown in the opening embed when known. */
+  avatarUrl?: string | null;
+  accountCreatedAt?: number | null;
+  joinedAt?: number | null;
 }
 
 export interface TicketCategoryView {
@@ -227,24 +234,31 @@ export class TicketService {
 
     const fill = (text: string) =>
       text.replaceAll("{user}", `<@${input.userId}>`).replaceAll("{number}", String(ticket!.number)).replaceAll("{category}", category?.name ?? "Ticket");
-    const embeds: Record<string, unknown>[] = [
-      {
-        title: fill(settings?.openingEmbed.title || `Ticket #${ticket.number}${category ? ` · ${category.name}` : ""}`).slice(0, 256),
-        description: fill(settings?.openingEmbed.description || input.subject || "Thanks for opening a ticket. A member of staff will be with you shortly.").slice(0, 4096),
-        color: settings ? Number.parseInt(settings.openingEmbed.color.slice(1), 16) : 0x3b82f6,
-        fields: [
-          { name: "Opened by", value: `<@${input.userId}>`, inline: true },
-          { name: "Priority", value: priority ?? "normal", inline: true },
-          ...(category ? [{ name: "Category", value: `${category.emoji ? `${category.emoji} ` : ""}${category.name}`, inline: true }] : []),
-        ],
-        footer: { text: "INFERA Tickets" },
-      },
-    ];
+    const color = settings ? Number.parseInt(settings.openingEmbed.color.slice(1), 16) : 0x3b82f6;
+    const numberLabel = `#${String(ticket.number).padStart(4, "0")}`;
+    const main: Record<string, unknown> = {
+      author: { name: `${input.username ?? "Member"} opened a ticket`, ...(input.avatarUrl ? { icon_url: input.avatarUrl } : {}) },
+      title: fill(settings?.openingEmbed.title || `${category?.emoji ? `${category.emoji} ` : "🎫 "}${category?.name ?? "Support ticket"}`).slice(0, 256),
+      description: fill(settings?.openingEmbed.description || input.subject || "Thanks for opening a ticket. A member of staff will be with you shortly.").slice(0, 4096),
+      color,
+      fields: [
+        { name: "Member", value: `<@${input.userId}>\n\`${input.userId}\``, inline: true },
+        { name: "Ticket", value: numberLabel, inline: true },
+        { name: "Priority", value: PRIORITY_LABEL[priority ?? "normal"] ?? "🔵 Normal", inline: true },
+        { name: "Account created", value: ts(input.accountCreatedAt), inline: true },
+        { name: "Joined server", value: ts(input.joinedAt), inline: true },
+        { name: "Claimed by", value: "Nobody yet", inline: true },
+      ],
+      footer: { text: `INFERA Tickets · ${category?.name ?? "General"}` },
+      timestamp: new Date().toISOString(),
+    };
+    if (input.avatarUrl) main.thumbnail = { url: input.avatarUrl };
+    const embeds: Record<string, unknown>[] = [main];
     if (input.answers?.length) {
       embeds.push({
-        title: "Form answers",
-        color: 0x8ab8ff,
-        fields: input.answers.slice(0, 25).map((entry) => ({ name: entry.question.slice(0, 256), value: (entry.answer || "—").slice(0, 1024) })),
+        title: "📋 Form responses",
+        color,
+        fields: input.answers.slice(0, 25).map((entry) => ({ name: entry.question.slice(0, 256), value: quote(entry.answer).slice(0, 1024) })),
       });
     }
     const ping = settings?.pingStaff ? settings.supportRoles.map((id) => `<@&${id}>`).join(" ") : "";
@@ -260,7 +274,7 @@ export class TicketService {
     await this.realtime.publish(input.guildId, "ticket.created", { ticketId: ticket.id, number: ticket.number, userId: input.userId, channelId: channel.id });
     await this.analytics.recordMetric(input.guildId, "tickets");
     await this.audit.record({ guildId: input.guildId, actorId: input.userId, action: "ticket.create", targetId: ticket.id });
-    await this.logEvent(input.guildId, `Ticket #${ticket.number} opened`, [
+    await this.logEvent(input.guildId, `🎫 Ticket #${ticket.number} opened`, [
       { name: "User", value: `<@${input.userId}>`, inline: true },
       { name: "Category", value: category?.name ?? "General", inline: true },
       { name: "Channel", value: `<#${channel.id}>`, inline: true },
@@ -289,9 +303,9 @@ export class TicketService {
     if (!claimEnabled) throw new InferaError("Claiming is disabled", { code: ErrorCode.FEATURE_DISABLED });
     if (ticket.claimedBy) throw new InferaError(ticket.claimedBy === staffId ? "You already claimed this ticket" : "That ticket is already claimed", { code: ErrorCode.CONFLICT });
     const updated = await this.db.ticket.update({ where: { id: ticket.id }, data: { claimedBy: staffId } });
-    await this.discord.sendMessage(ticket.channelId, { embeds: [{ description: `🙋 <@${staffId}> claimed this ticket and will help you.`, color: 0x22c55e }] }).catch(() => undefined);
+    await this.discord.sendMessage(ticket.channelId, { embeds: [{ author: { name: "Ticket claimed" }, description: `🙋 <@${staffId}> is now handling this ticket and will help you shortly.`, color: 0x22c55e, timestamp: new Date().toISOString() }] }).catch(() => undefined);
     await this.realtime.publish(guildId, "ticket.claimed", { ticketId, staffId });
-    await this.logEvent(guildId, `Ticket #${ticket.number} claimed`, [{ name: "Staff", value: `<@${staffId}>`, inline: true }]);
+    await this.logEvent(guildId, `🙋 Ticket #${ticket.number} claimed`, [{ name: "Staff", value: `<@${staffId}>`, inline: true }]);
     return updated;
   }
 
@@ -301,7 +315,7 @@ export class TicketService {
     const updated = await this.db.ticket.update({ where: { id: ticket.id }, data: { claimedBy: null } });
     await this.discord.sendMessage(ticket.channelId, { embeds: [{ description: `<@${actorId}> unclaimed this ticket.`, color: 0x64748b }] }).catch(() => undefined);
     await this.realtime.publish(guildId, "ticket.unclaimed", { ticketId, actorId });
-    await this.logEvent(guildId, `Ticket #${ticket.number} unclaimed`, [{ name: "By", value: `<@${actorId}>`, inline: true }]);
+    await this.logEvent(guildId, `↩️ Ticket #${ticket.number} unclaimed`, [{ name: "By", value: `<@${actorId}>`, inline: true }]);
     return updated;
   }
 
@@ -326,14 +340,19 @@ export class TicketService {
           {
             embeds: [
               {
-                title: `Transcript · Ticket #${ticket.number}`,
+                title: `📄 Transcript · Ticket #${String(ticket.number).padStart(4, "0")}`,
+                description: ticket.subject ? `**${ticket.subject}**` : undefined,
                 color: 0x3b82f6,
                 fields: [
                   { name: "Opened by", value: `<@${ticket.userId}>`, inline: true },
                   { name: "Closed by", value: `<@${actorId}>`, inline: true },
+                  { name: "Claimed by", value: ticket.claimedBy ? `<@${ticket.claimedBy}>` : "Nobody", inline: true },
                   { name: "Messages", value: String(messages.length), inline: true },
+                  { name: "Open for", value: this.duration(ticket.createdAt), inline: true },
+                  { name: "Priority", value: PRIORITY_LABEL[ticket.priority] ?? ticket.priority, inline: true },
                   ...(reason ? [{ name: "Reason", value: reason.slice(0, 1024) }] : []),
                 ],
+                footer: { text: "Open the attached file in a browser to read the full conversation" },
                 timestamp: new Date().toISOString(),
               },
             ],
@@ -348,7 +367,7 @@ export class TicketService {
       const text = await this.config.getValue<string>(guildId, "tickets.close_message").catch(() => "");
       await this.discord
         .sendDm(ticket.userId, {
-          embeds: [{ title: `Ticket #${ticket.number} closed`, description: `${text || "Your ticket was closed."}${reason ? `\n\n**Reason:** ${reason}` : ""}`.slice(0, 4096), color: 0x3b82f6 }],
+          embeds: [{ title: `🔒 Ticket #${ticket.number} closed`, description: `${text || "Your ticket was closed."}${reason ? `\n\n**Reason:** ${reason}` : ""}`.slice(0, 4096), color: 0x3b82f6 }],
         }, wantTranscript ? [{ name: `ticket-${ticket.number}.html`, data: Buffer.from(html, "utf8"), contentType: "text/html" }] : [])
         .catch(() => undefined);
     }
@@ -359,7 +378,19 @@ export class TicketService {
       await this.discord.editChannel(ticket.channelId, { name: `closed-${ticket.number}` }, "Ticket closed").catch(() => undefined);
       await this.discord
         .sendMessage(ticket.channelId, {
-          embeds: [{ title: "Ticket closed", description: `Closed by <@${actorId}>${reason ? `\n**Reason:** ${reason}` : ""}`, color: 0xef4444 }],
+          embeds: [
+            {
+              title: "🔒 Ticket closed",
+              description: "This ticket is closed. Staff can reopen it or delete the channel.",
+              color: 0xef4444,
+              fields: [
+                { name: "Closed by", value: `<@${actorId}>`, inline: true },
+                { name: "Open for", value: this.duration(ticket.createdAt), inline: true },
+                ...(reason ? [{ name: "Reason", value: reason.slice(0, 1024) }] : []),
+              ],
+              timestamp: new Date().toISOString(),
+            },
+          ],
           components: [
             {
               type: 1,
@@ -376,7 +407,7 @@ export class TicketService {
     }
     await this.realtime.publish(guildId, "ticket.closed", { ticketId, actorId, reason: reason ?? null });
     await this.audit.record({ guildId, actorId, action: "ticket.close", targetId: ticketId, metadata: { reason: reason ?? null } });
-    await this.logEvent(guildId, `Ticket #${ticket.number} closed`, [
+    await this.logEvent(guildId, `🔒 Ticket #${ticket.number} closed`, [
       { name: "User", value: `<@${ticket.userId}>`, inline: true },
       { name: "Closed by", value: `<@${actorId}>`, inline: true },
       ...(reason ? [{ name: "Reason", value: reason.slice(0, 1024) }] : []),
@@ -399,7 +430,7 @@ export class TicketService {
     const claimGlobal = await this.config.getValue<boolean>(guildId, "tickets.claim_enabled").catch(() => true);
     await this.discord.sendMessage(ticket.channelId, { embeds: [{ description: `🔓 <@${actorId}> reopened this ticket.`, color: 0x22c55e }], components: this.controls(updated, settings, claimGlobal) }).catch(() => undefined);
     await this.realtime.publish(guildId, "ticket.reopened", { ticketId, actorId });
-    await this.logEvent(guildId, `Ticket #${ticket.number} reopened`, [{ name: "By", value: `<@${actorId}>`, inline: true }], 0x22c55e);
+    await this.logEvent(guildId, `🔓 Ticket #${ticket.number} reopened`, [{ name: "By", value: `<@${actorId}>`, inline: true }], 0x22c55e);
     return updated;
   }
 
@@ -411,7 +442,7 @@ export class TicketService {
     await this.discord.deleteChannel(ticket.channelId, "Ticket deleted").catch(() => undefined);
     const updated = await this.db.ticket.update({ where: { id: current.id }, data: { status: "deleted" } });
     await this.realtime.publish(guildId, "ticket.deleted", { ticketId, actorId });
-    await this.logEvent(guildId, `Ticket #${ticket.number} deleted`, [{ name: "By", value: `<@${actorId}>`, inline: true }], 0x64748b);
+    await this.logEvent(guildId, `🗑️ Ticket #${ticket.number} deleted`, [{ name: "By", value: `<@${actorId}>`, inline: true }], 0x64748b);
     return updated;
   }
 
@@ -426,7 +457,7 @@ export class TicketService {
     const updated = await this.db.ticket.update({ where: { id: ticket.id }, data: { categoryId: category.id, claimedBy: null } });
     await this.discord.sendMessage(ticket.channelId, { embeds: [{ description: `↪️ <@${actorId}> moved this ticket to **${category.name}**.`, color: 0x3b82f6 }] }).catch(() => undefined);
     await this.realtime.publish(guildId, "ticket.transferred", { ticketId, categoryId, actorId });
-    await this.logEvent(guildId, `Ticket #${ticket.number} transferred`, [{ name: "To", value: category.name, inline: true }, { name: "By", value: `<@${actorId}>`, inline: true }]);
+    await this.logEvent(guildId, `↪️ Ticket #${ticket.number} moved`, [{ name: "To", value: category.name, inline: true }, { name: "By", value: `<@${actorId}>`, inline: true }]);
     return updated;
   }
 
@@ -437,7 +468,7 @@ export class TicketService {
     if (ticket.status === "open") {
       await this.discord.sendMessage(ticket.channelId, { embeds: [{ description: `Priority set to **${priority}**.`, color: PRIORITY_COLOR[priority] }] }).catch(() => undefined);
     }
-    await this.logEvent(guildId, `Ticket #${ticket.number} priority`, [{ name: "Priority", value: priority, inline: true }], PRIORITY_COLOR[priority]);
+    await this.logEvent(guildId, `⚡ Ticket #${ticket.number} priority`, [{ name: "Priority", value: priority, inline: true }], PRIORITY_COLOR[priority]);
     return updated;
   }
 
@@ -538,6 +569,13 @@ export class TicketService {
       }).catch(() => undefined);
     }
     return closed;
+  }
+
+  private duration(from: Date): string {
+    const minutes = Math.max(1, Math.round((Date.now() - from.getTime()) / 60_000));
+    if (minutes < 60) return `${minutes} min`;
+    const hours = Math.round(minutes / 6) / 10;
+    return hours < 48 ? `${hours} h` : `${Math.round(hours / 24)} days`;
   }
 
   private textTranscript(ticket: Ticket, messages: Array<{ authorId: string; content: string; createdAt: Date }>, reason?: string): string {

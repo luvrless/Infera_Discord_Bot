@@ -1,5 +1,6 @@
 /**
  * Release notes. Add a new entry at the TOP for every bot/dashboard update.
+ * Set `major: true` only for big updates; only those are announced.
  *
  * When the bot starts, it publishes the newest entry as a platform
  * notification (once per `version`) and DMs it to every server owner who has
@@ -17,11 +18,25 @@ export interface ReleaseNote {
   system?: string[];
   /** Planned or actual downtime, if any. */
   downtime?: string;
+  /**
+   * Only major releases are announced (dashboard notification + owner DM).
+   * Small fixes and tweaks ship silently.
+   */
+  major?: boolean;
 }
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "2026.11.28-4",
+    major: false,
+    date: "2026-11-28",
+    title: "Ticket polish",
+    summary: "Formulary panels always ask before opening, richer ticket info embeds and cleaner ticket messages.",
+    fixes: ["Formulary buttons always open a form.", "Ticket channels show the member's account age, join date and form answers."],
+  },
+  {
     version: "2026.11.28-3",
+    major: true,
     date: "2026-11-28",
     title: "The new ticket system",
     summary: "Tickets were rebuilt: three panel styles, ticket options with their own forms and staff roles, and much better ticket management. Existing panels and tickets keep working.",
@@ -38,6 +53,7 @@ export const RELEASES: ReleaseNote[] = [
   },
   {
     version: "2026.11.28-2",
+    major: false,
     date: "2026-11-28",
     title: "Boost notifications and a cleaner dashboard",
     summary: "Thank your boosters automatically, plus a tidier dashboard sidebar. Your existing settings were not changed.",
@@ -51,6 +67,7 @@ export const RELEASES: ReleaseNote[] = [
   },
   {
     version: "2026.11.28",
+    major: true,
     date: "2026-11-28",
     title: "Smoother dashboard, easier leveling and update notifications",
     summary: "A big stability update for the dashboard and bot. Your server settings were kept exactly as they were.",
@@ -75,4 +92,5 @@ export const RELEASES: ReleaseNote[] = [
   },
 ];
 
-export const LATEST_RELEASE: ReleaseNote | undefined = RELEASES[0];
+/** Newest release that should be announced to server owners. */
+export const LATEST_RELEASE: ReleaseNote | undefined = RELEASES.find((release) => release.major);
