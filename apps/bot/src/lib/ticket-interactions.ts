@@ -1,4 +1,4 @@
-import { DEFAULT_FORM_QUESTION, createLogger } from "@infera/shared";
+import { DEFAULT_FORM_QUESTION, createLogger, normalizePanelConfig, type TicketQuestion } from "@infera/shared";
 import {
   LabelBuilder,
   ModalBuilder,
@@ -24,7 +24,12 @@ function questionsFor(category: Category, forceForm: boolean) {
 
 function formModal(category: Category, forceForm: boolean): ModalBuilder {
   const modal = new ModalBuilder().setCustomId(`tkt:f:${category.id}`).setTitle(category.name.slice(0, 45) || "Open a ticket");
-  for (const question of questionsFor(category, forceForm)) {
+  for (const question of questionsFor(category, forceForm)) modal.addLabelComponents(questionLabel(question));
+  return modal;
+}
+
+function questionLabel(question: TicketQuestion): LabelBuilder {
+  {
     const label = new LabelBuilder().setLabel(question.label.slice(0, 45));
     if (question.description) label.setDescription(question.description.slice(0, 100));
     if ((question.type === "select" || question.type === "multi") && question.options.length > 0) {
@@ -46,9 +51,59 @@ function formModal(category: Category, forceForm: boolean): ModalBuilder {
       if (question.placeholder) input.setPlaceholder(question.placeholder.slice(0, 100));
       label.setTextInputComponent(input);
     }
-    modal.addLabelComponents(label);
+    return label;
   }
-  return modal;
+}
+
+function readAnswer(interaction: ModalSubmitInteraction, question: TicketQuestion): string {
+  try {
+    if (question.type === "select" || question.type === "multi") {
+      return interaction.fields.getStringSelectValues(question.id).map((value) => question.options[Number(value)] ?? value).join(", ");
+    }
+    return interaction.fields.getTextInputValue(question.id);
+  } catch {
+    return "";
+  }
+}
+
+/** Formulary panel: one form with a topic dropdown and the panel's own questions. */
+async function panelForm(client: InferaClient, interaction: ButtonInteraction<"cached">, panelId: string): Promise<void> {
+  const panel = await client.services.db.ticketPanel.findFirst({ where: { id: panelId, guildId: interaction.guildId } });
+  if (!panel) {
+    await interaction.reply({ content: "This ticket panel no longer exists.", ephemeral: true });
+    return;
+  }
+  let raw: unknown = {};
+  try {
+    raw = JSON.parse(panel.config);
+  } catch {
+    raw = {};
+  }
+  const config = normalizePanelConfig(raw, { title: panel.title, description: panel.description });
+  const all = await client.services.tickets.categories(interaction.guildId);
+  const options = config.categoryIds.length ? config.categoryIds.map((id) => all.find((c) => c.id === id)).filter((c): c is (typeof all)[number] => Boolean(c)) : all;
+  const modal = new ModalBuilder().setCustomId(`tkt:pfs:${panel.id}`).setTitle(config.form.title);
+  if (options.length > 1) {
+    modal.addLabelComponents(
+      new LabelBuilder().setLabel(config.form.topicLabel).setStringSelectMenuComponent(
+        new StringSelectMenuBuilder()
+          .setCustomId("topic")
+          .setRequired(true)
+          .setPlaceholder("Choose an option")
+          .addOptions(
+            options.slice(0, 25).map((option) => {
+              const entry = new StringSelectMenuOptionBuilder().setLabel(option.name.slice(0, 100)).setValue(option.id);
+              if (option.description) entry.setDescription(option.description.slice(0, 100));
+              if (option.emoji) entry.setEmoji(option.emoji);
+              return entry;
+            }),
+          ),
+      ),
+    );
+  }
+  const questions = config.form.questions.length ? config.form.questions : [DEFAULT_FORM_QUESTION];
+  for (const question of questions.slice(0, options.length > 1 ? 4 : 5)) modal.addLabelComponents(questionLabel(question));
+  await interaction.showModal(modal);
 }
 
 async function openTicket(
@@ -139,6 +194,66 @@ export async function handleTicketInteraction(client: InferaClient, interaction:
       await startCategory(client, interaction, interaction.customId.slice(6));
       return true;
     }
+    if (interaction.isButton() && interaction.customId.startsWith("tkt:d:")) {
+      // Default style: open the ticket right away.
+      const category = await tickets.category(interaction.guildId, interaction.customId.slice(6)).catch(() => null);
+      if (!category) {
+        await interaction.reply({ content: "That ticket option no longer exists.", ephemeral: true });
+        return true;
+      }
+      await openTicket(client, interaction, category);
+      return true;
+    }
+    if (interaction.isButton() && interaction.customId.startsWith("tkt:pf:")) {
+      await panelForm(client, interaction, interaction.customId.slice(7));
+      return true;
+    }
+    if (interaction.isModalSubmit() && interaction.customId.startsWith("tkt:pfs:")) {
+      const panel = await client.services.db.ticketPanel.findFirst({ where: { id: interaction.customId.slice(8), guildId: interaction.guildId } });
+      if (!panel) {
+        await interaction.reply({ content: "This ticket panel no longer exists.", ephemeral: true });
+        return true;
+      }
+      let raw: unknown = {};
+      try {
+        raw = JSON.parse(panel.config);
+      } catch {
+        raw = {};
+      }
+      const config = normalizePanelConfig(raw, { title: panel.title, description: panel.description });
+      const all = await tickets.categories(interaction.guildId);
+      const options = config.categoryIds.length ? config.categoryIds.map((id) => all.find((c) => c.id === id)).filter((c): c is (typeof all)[number] => Boolean(c)) : all;
+      let topicId: string | undefined;
+      try {
+        topicId = interaction.fields.getStringSelectValues("topic")[0];
+      } catch {
+        topicId = options[0]?.id;
+      }
+      const category = options.find((option) => option.id === topicId) ?? options[0] ?? null;
+      const questions = config.form.questions.length ? config.form.questions : [DEFAULT_FORM_QUESTION];
+      const answers = [
+        ...(category && options.length > 1 ? [{ question: config.form.topicLabel, answer: `${category.emoji ? `${category.emoji} ` : ""}${category.name}` }] : []),
+        ...questions.slice(0, options.length > 1 ? 4 : 5).map((question) => ({ question: question.label, answer: readAnswer(interaction, question) })),
+      ];
+      if (category) {
+        await openTicket(client, interaction, category, answers);
+      } else {
+        await interaction.deferReply({ ephemeral: true });
+        const ticket = await tickets
+          .create({
+            guildId: interaction.guildId,
+            userId: interaction.user.id,
+            username: interaction.member.displayName || interaction.user.username,
+            answers,
+            avatarUrl: interaction.user.displayAvatarURL({ size: 256 }),
+            accountCreatedAt: interaction.user.createdTimestamp,
+            joinedAt: interaction.member.joinedTimestamp ?? null,
+          })
+          .catch((error: unknown) => error as Error);
+        await interaction.editReply({ content: ticket instanceof Error ? ticket.message : `Your ticket is ready: <#${ticket.channelId}>` });
+      }
+      return true;
+    }
     if (interaction.isButton() && interaction.customId.startsWith("tkt:fc:")) {
       await startCategory(client, interaction, interaction.customId.slice(7), true);
       return true;
@@ -155,16 +270,7 @@ export async function handleTicketInteraction(client: InferaClient, interaction:
     if (interaction.isModalSubmit() && interaction.customId.startsWith("tkt:f:")) {
       const category = await tickets.category(interaction.guildId, interaction.customId.slice(6));
       const questions = category.settings.questions.length ? category.settings.questions : [DEFAULT_FORM_QUESTION];
-      const answers = questions.map((question) => {
-        let answer = "";
-        if (question.type === "select" || question.type === "multi") {
-          const values = interaction.fields.getStringSelectValues(question.id);
-          answer = values.map((value) => question.options[Number(value)] ?? value).join(", ");
-        } else {
-          answer = interaction.fields.getTextInputValue(question.id);
-        }
-        return { question: question.label, answer };
-      });
+      const answers = questions.map((question) => ({ question: question.label, answer: readAnswer(interaction, question) }));
       await openTicket(client, interaction, category, answers);
       return true;
     }
