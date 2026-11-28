@@ -54,6 +54,9 @@ export interface DiscordGuild {
   member_count?: number;
   /** Present on REST responses fetched with `with_counts=true`. */
   approximate_member_count?: number;
+  approximate_presence_count?: number;
+  premium_subscription_count?: number;
+  system_channel_id?: string | null;
   premium_tier?: number;
   preferred_locale?: string;
   features?: string[];
@@ -309,6 +312,11 @@ export class DiscordApi {
     } catch (error) {
       throw this.translateError(error, Routes.channelMessages(channelId));
     }
+  }
+
+  /** Edit the bot's own profile (username, avatar, banner). */
+  async editCurrentUser(body: { username?: string; avatar?: string; banner?: string }): Promise<void> {
+    await this.request("patch", Routes.user("@me"), { body });
   }
 
   /** Make the bot leave a server. */

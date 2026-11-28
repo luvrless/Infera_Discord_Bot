@@ -13,7 +13,8 @@ export type PresenceStatus = "online" | "idle" | "dnd" | "invisible";
 export type PresenceActivity = "playing" | "watching" | "listening" | "competing" | "custom" | "none";
 
 export interface PlatformState {
-  maintenance: { enabled: boolean; message: string };
+  /** `until`: optional ISO time after which maintenance ends by itself. */
+  maintenance: { enabled: boolean; message: string; until: string | null };
   presence: { status: PresenceStatus; activity: PresenceActivity; text: string };
   /** Command names disabled in every server. */
   disabledCommands: string[];
@@ -21,26 +22,41 @@ export interface PlatformState {
   dashboardBanner: { text: string; tone: "info" | "warning" | "danger" };
   /** When off, the bot leaves new servers immediately. */
   allowNewServers: boolean;
+  /** Dashboard read-only mode: nobody but the operator can change settings. */
+  readOnly: boolean;
 }
 
+/** Blacklist entry kinds: bot ban, website/dashboard ban, blocked server, frozen server. */
+export type PlatformListType = "user" | "dashboard" | "guild" | "frozen";
+
 export const DEFAULT_PLATFORM_STATE: PlatformState = {
-  maintenance: { enabled: false, message: "INFERA is under maintenance. Please try again in a few minutes." },
+  maintenance: { enabled: false, message: "INFERA is under maintenance. Please try again in a few minutes.", until: null },
   presence: { status: "online", activity: "watching", text: "infera.wtf" },
   disabledCommands: [],
   dashboardBanner: { text: "", tone: "info" },
   allowNewServers: true,
+  readOnly: false,
 };
 
 const pick = <T extends string>(value: unknown, allowed: readonly T[], fallback: T): T => (allowed.includes(value as T) ? (value as T) : fallback);
 const str = (value: unknown, max: number, fallback: string) => (typeof value === "string" ? value.slice(0, max) : fallback);
 
 export function normalizePlatformState(raw: Partial<Record<keyof PlatformState, unknown>>): PlatformState {
+  // Note: an expired timed maintenance window is reported as disabled.
   const d = DEFAULT_PLATFORM_STATE;
   const m = (raw.maintenance ?? {}) as Record<string, unknown>;
   const p = (raw.presence ?? {}) as Record<string, unknown>;
   const b = (raw.dashboardBanner ?? {}) as Record<string, unknown>;
   return {
-    maintenance: { enabled: typeof m.enabled === "boolean" ? m.enabled : d.maintenance.enabled, message: str(m.message, 500, d.maintenance.message) || d.maintenance.message },
+    maintenance: (() => {
+      const until = typeof m.until === "string" && !Number.isNaN(new Date(m.until).getTime()) ? new Date(m.until).toISOString() : null;
+      const expired = until !== null && new Date(until).getTime() <= Date.now();
+      return {
+        enabled: (typeof m.enabled === "boolean" ? m.enabled : d.maintenance.enabled) && !expired,
+        message: str(m.message, 500, d.maintenance.message) || d.maintenance.message,
+        until: expired ? null : until,
+      };
+    })(),
     presence: {
       status: pick(p.status, ["online", "idle", "dnd", "invisible"] as const, d.presence.status),
       activity: pick(p.activity, ["playing", "watching", "listening", "competing", "custom", "none"] as const, d.presence.activity),
@@ -51,5 +67,6 @@ export function normalizePlatformState(raw: Partial<Record<keyof PlatformState, 
       : [],
     dashboardBanner: { text: str(b.text, 300, ""), tone: pick(b.tone, ["info", "warning", "danger"] as const, "info") },
     allowNewServers: typeof raw.allowNewServers === "boolean" ? raw.allowNewServers : d.allowNewServers,
+    readOnly: typeof raw.readOnly === "boolean" ? raw.readOnly : d.readOnly,
   };
 }

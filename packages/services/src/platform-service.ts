@@ -1,9 +1,9 @@
 import type { PrismaClient } from "@infera/database";
-import { DEFAULT_PLATFORM_STATE, normalizePlatformState, type Cache, type PlatformState } from "@infera/shared";
+import { DEFAULT_PLATFORM_STATE, normalizePlatformState, type Cache, type PlatformListType, type PlatformState } from "@infera/shared";
 
 const STATE_KEY = "infera:platform:state:v1";
 const BLACKLIST_KEY = "infera:platform:blacklist:v1";
-const STATE_FIELDS = ["maintenance", "presence", "disabledCommands", "dashboardBanner", "allowNewServers"] as const;
+const STATE_FIELDS = ["maintenance", "presence", "disabledCommands", "dashboardBanner", "allowNewServers", "readOnly"] as const;
 
 /**
  * Global platform state controlled from the operator panel. Read by the bot
@@ -43,23 +43,30 @@ export class PlatformService {
   }
 
   // ------------------------------------------------------------- blacklist
-  private async blacklistSets(): Promise<{ users: string[]; guilds: string[] }> {
+  private async blacklistSets(): Promise<Record<string, string[]>> {
     return this.cache.getOrSet(BLACKLIST_KEY, 30, async () => {
       const rows = await this.db.platformBlacklist.findMany({ select: { type: true, targetId: true } }).catch(() => []);
-      return { users: rows.filter((r) => r.type === "user").map((r) => r.targetId), guilds: rows.filter((r) => r.type === "guild").map((r) => r.targetId) };
-    }).catch(() => ({ users: [], guilds: [] }));
+      const sets: Record<string, string[]> = {};
+      for (const row of rows) (sets[row.type] ??= []).push(row.targetId);
+      return sets;
+    }).catch(() => ({}));
   }
 
-  async isBlacklisted(type: "user" | "guild", id: string): Promise<boolean> {
+  async isBlacklisted(type: PlatformListType, id: string): Promise<boolean> {
     const sets = await this.blacklistSets();
-    return (type === "user" ? sets.users : sets.guilds).includes(id);
+    return (sets[type] ?? []).includes(id);
+  }
+
+  /** All ids of one list type (e.g. every frozen server). */
+  async listIds(type: PlatformListType): Promise<string[]> {
+    return (await this.blacklistSets())[type] ?? [];
   }
 
   async blacklist() {
     return this.db.platformBlacklist.findMany({ orderBy: { createdAt: "desc" }, take: 500 });
   }
 
-  async addBlacklist(type: "user" | "guild", targetId: string, reason: string | null, actorId: string) {
+  async addBlacklist(type: PlatformListType, targetId: string, reason: string | null, actorId: string) {
     const row = await this.db.platformBlacklist.upsert({
       where: { type_targetId: { type, targetId } },
       create: { type, targetId, reason, createdBy: actorId },
@@ -71,6 +78,33 @@ export class PlatformService {
 
   async removeBlacklist(id: string): Promise<void> {
     await this.db.platformBlacklist.deleteMany({ where: { id } });
+    await this.cache.del(BLACKLIST_KEY);
+  }
+
+  async removeByTarget(type: PlatformListType, targetId: string): Promise<number> {
+    const result = await this.db.platformBlacklist.deleteMany({ where: { type, targetId } });
+    await this.cache.del(BLACKLIST_KEY);
+    return result.count;
+  }
+
+  // ---------------------------------------------------- notes & flags
+  async getSetting<T>(key: string, fallback: T): Promise<T> {
+    const row = await this.db.platformSetting.findUnique({ where: { key } }).catch(() => null);
+    if (!row) return fallback;
+    try {
+      return JSON.parse(row.value) as T;
+    } catch {
+      return fallback;
+    }
+  }
+
+  async setSetting(key: string, value: unknown, actorId: string): Promise<void> {
+    const json = JSON.stringify(value);
+    await this.db.platformSetting.upsert({ where: { key }, create: { key, value: json, updatedBy: actorId }, update: { value: json, updatedBy: actorId } });
+  }
+
+  async clearCaches(): Promise<void> {
+    await this.cache.del(STATE_KEY);
     await this.cache.del(BLACKLIST_KEY);
   }
 

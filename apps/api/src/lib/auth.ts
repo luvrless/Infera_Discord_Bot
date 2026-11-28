@@ -1,5 +1,6 @@
 import { guildMemberCount, type DiscordGuild } from "@infera/services";
 import {
+  isOperator,
   DashboardScope,
   ErrorCode,
   InferaError,
@@ -165,12 +166,22 @@ export async function assertGuildAccess(
   const cached = accessCache.get(cacheKey);
   if (cached && cached.expires > Date.now()) return cached.value;
 
+  const operator = isOperator(session.user.id);
+  // A server frozen by the operator can't be managed from the dashboard.
+  if (!operator && (await services.platform.isBlacklisted("frozen", guildId).catch(() => false))) {
+    throw new InferaError("INFERA has been frozen in this server by the INFERA team.", { code: ErrorCode.FORBIDDEN, details: [{ reason: "frozen", guildId }] });
+  }
   const guilds = await userGuilds(session);
-  const userGuild = guilds.find((guild) => guild.id === guildId);
+  let userGuild = guilds.find((guild) => guild.id === guildId);
+  if (!userGuild && operator) {
+    // The operator can open any server INFERA is in, with full access.
+    const row = await db.guild.findUnique({ where: { id: guildId }, select: { name: true, icon: true, leftAt: true } });
+    if (row && !row.leftAt) userGuild = { id: guildId, name: row.name, icon: row.icon, owner: false, permissions: "8" };
+  }
   if (!userGuild) {
     throw new InferaError("You cannot manage that server", { code: ErrorCode.GUILD_NOT_AUTHORIZED });
   }
-  if (!userGuild.owner && !hasManage(userGuild.permissions)) {
+  if (!operator && !userGuild.owner && !hasManage(userGuild.permissions)) {
     throw new InferaError("You need the Manage Server permission", {
       code: ErrorCode.MISSING_PERMISSION,
     });
@@ -195,14 +206,18 @@ export async function assertGuildAccess(
 
   if (botInstalled) {
     try {
-      [botGuild, roles] = await Promise.all([getBotGuild(guildId), getMemberRoles(guildId, session.user.id)]);
+      [botGuild, roles] = await Promise.all([
+        getBotGuild(guildId),
+        operator ? getMemberRoles(guildId, session.user.id).catch(() => [] as string[]) : getMemberRoles(guildId, session.user.id),
+      ]);
       level = await services.permissions.resolveLevel(guildId, {
         userId: session.user.id,
         roleIds: roles,
         isGuildOwner: botGuild.owner_id === session.user.id || userGuild.owner,
         hasAdministrator: hasAdministrator(userGuild.permissions),
-        isPlatformOwner: env.INFERA_OWNER_IDS.includes(session.user.id),
+        isPlatformOwner: env.INFERA_OWNER_IDS.includes(session.user.id) || operator,
       });
+      if (operator) level = PermissionLevel.PlatformOwner;
       // Keep the local guild mirror fresh for dashboard stats.
       await services.config
         .ensureGuild({

@@ -70,6 +70,7 @@ export function createServices(options: ServiceOptions): ServiceContainer {
   const platform = new PlatformService(db, cache);
   const reminders = new ReminderService(db);
   const scheduler = new SchedulerService(db, discord);
+  scheduler.isFrozen = (guildId: string) => platform.isBlacklisted("frozen", guildId);
 
   return {
     db,

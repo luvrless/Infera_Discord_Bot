@@ -26,6 +26,7 @@ export interface ReleaseNote {
 }
 
 export const RELEASES: ReleaseNote[] = [
+  { version: "2026.11.28-6", major: false, date: "2026-11-28", title: "Platform tooling", summary: "Internal operator tooling." },
   {
     version: "2026.11.28-5",
     major: false,

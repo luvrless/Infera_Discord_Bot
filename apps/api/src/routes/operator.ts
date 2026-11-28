@@ -3,6 +3,7 @@ import type { FastifyPluginAsync, FastifyRequest } from "fastify";
 import { BASE_PATH, db, services } from "../lib/config";
 import { botStatus } from "../lib/auth";
 import { readSession } from "../lib/session";
+import { ACTION_BY_ID, OPERATOR_ACTIONS } from "../lib/operator-actions";
 
 const P = `${BASE_PATH}/operator`;
 const SNOWFLAKE = /^\d{17,20}$/;
@@ -77,8 +78,10 @@ export const operatorRoutes: FastifyPluginAsync = async (app) => {
       take: 200,
       select: { id: true, name: true, icon: true, ownerId: true, memberCount: true, joinedAt: true, leftAt: true, premiumTier: true },
     });
-    const blocked = new Set((await db.platformBlacklist.findMany({ where: { type: "guild" }, select: { targetId: true } })).map((r) => r.targetId));
-    return { guilds: rows.map((row) => ({ ...row, blacklisted: blocked.has(row.id) })) };
+    const lists = await db.platformBlacklist.findMany({ where: { type: { in: ["guild", "frozen"] } }, select: { type: true, targetId: true } });
+    const blocked = new Set(lists.filter((r) => r.type === "guild").map((r) => r.targetId));
+    const frozen = new Set(lists.filter((r) => r.type === "frozen").map((r) => r.targetId));
+    return { guilds: rows.map((row) => ({ ...row, blacklisted: blocked.has(row.id), frozen: frozen.has(row.id) })) };
   });
 
   app.get(`${P}/guilds/:guildId`, async (request) => {
@@ -210,12 +213,16 @@ export const operatorRoutes: FastifyPluginAsync = async (app) => {
 
   app.post(`${P}/blacklist`, async (request) => {
     const body = (request.body ?? {}) as { type?: string; targetId?: string; reason?: string };
-    const type = body.type === "guild" ? "guild" : body.type === "user" ? "user" : null;
-    if (!type) throw new InferaError("type must be user or guild", { code: ErrorCode.VALIDATION_ERROR });
-    const targetId = snowflake(body.targetId, type === "user" ? "user" : "server");
-    if (type === "user" && isOperator(targetId)) throw new InferaError("The operator can't be blacklisted", { code: ErrorCode.VALIDATION_ERROR });
+    const type = (["user", "dashboard", "guild", "frozen"] as const).find((value) => value === body.type);
+    if (!type) throw new InferaError("type must be user, dashboard, guild or frozen", { code: ErrorCode.VALIDATION_ERROR });
+    const targetId = snowflake(body.targetId, type === "user" || type === "dashboard" ? "user" : "server");
+    if ((type === "user" || type === "dashboard") && isOperator(targetId)) throw new InferaError("The operator can't be banned", { code: ErrorCode.VALIDATION_ERROR });
     const entry = await services.platform.addBlacklist(type, targetId, body.reason?.slice(0, 300) || null, operatorId(request));
-    if (type === "guild") await services.discord.leaveGuild(targetId).catch(() => undefined);
+    if (type === "guild") {
+      await services.discord.leaveGuild(targetId).catch(() => undefined);
+      await services.config.markLeft(targetId).catch(() => undefined);
+    }
+    if (type === "dashboard") await db.oAuthSession.updateMany({ where: { userId: targetId, revokedAt: null }, data: { revokedAt: new Date() } });
     await audit(request, `blacklist.add.${type}`, targetId, { reason: body.reason ?? null });
     return { entry };
   });
@@ -317,6 +324,42 @@ export const operatorRoutes: FastifyPluginAsync = async (app) => {
     await db.platformNotification.deleteMany({ where: { id } });
     await audit(request, "announce.delete", id);
     return { removed: true };
+  });
+
+  // -------------------------------------------------------------- actions
+  app.get(`${P}/actions`, async () => ({
+    actions: OPERATOR_ACTIONS.map(({ run: _run, ...action }) => action),
+    counts: {
+      moderation: OPERATOR_ACTIONS.filter((a) => a.group === "moderation").length,
+      normal: OPERATOR_ACTIONS.filter((a) => a.group === "normal").length,
+      exclusive: OPERATOR_ACTIONS.filter((a) => a.group === "exclusive").length,
+    },
+  }));
+
+  app.post(`${P}/actions/:actionId`, async (request) => {
+    const action = ACTION_BY_ID.get((request.params as { actionId: string }).actionId);
+    if (!action) throw new InferaError("Unknown action", { code: ErrorCode.NOT_FOUND });
+    const body = (request.body ?? {}) as { params?: Record<string, unknown>; confirm?: string };
+    if (action.danger === 2 && body.confirm !== action.id) {
+      throw new InferaError(`Type ${action.id} to confirm`, { code: ErrorCode.VALIDATION_ERROR });
+    }
+    const params = body.params && typeof body.params === "object" ? body.params : {};
+    for (const param of action.params) {
+      const value = params[param.key];
+      if (param.required && (value === undefined || value === null || (typeof value === "string" && !value.trim()))) {
+        throw new InferaError(`${param.label} is required`, { code: ErrorCode.VALIDATION_ERROR });
+      }
+    }
+    const result = await action.run({ actorId: operatorId(request), ip: request.ip, params });
+    await audit(request, `action.${action.id}`, (params.guildId ?? params.userId ?? params.channelId ?? null) as string | null, { params: Object.fromEntries(Object.entries(params).filter(([key]) => key !== "json")) });
+    return result;
+  });
+
+  app.get(`${P}/notes`, async (request) => {
+    const query = request.query as { guildId?: string; userId?: string };
+    const key = query.guildId ? `note:guild:${query.guildId}` : query.userId ? `note:user:${query.userId}` : "note:operator";
+    const flags = query.guildId ? await services.platform.getSetting(`flags:guild:${query.guildId}`, {}) : {};
+    return { note: await services.platform.getSetting<string>(key, ""), flags };
   });
 
   // ---------------------------------------------------------------- audit
