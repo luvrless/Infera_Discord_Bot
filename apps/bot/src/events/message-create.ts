@@ -1,10 +1,11 @@
 import { CommandContext, registry, tokenize } from "@infera/commands";
 import { PermissionLevel, createLogger } from "@infera/shared";
-import { EmbedBuilder, type Guild, type Message } from "discord.js";
+import { EmbedBuilder, MessageType, type Guild, type Message } from "discord.js";
 import type { InferaClient } from "../client";
 import { runAutomod } from "../lib/automod";
 import { runCommand } from "../lib/command-runner";
 import { ensureGuild, readConfig } from "../lib/guilds";
+import { sendBoostNotification } from "../lib/boost";
 import { grantMessageXp } from "../lib/leveling";
 import { toPermissionInput } from "../lib/permissions";
 
@@ -80,7 +81,21 @@ async function runAutoresponders(client: InferaClient, message: Message, guild: 
   }
 }
 
+const BOOST_TYPES = new Set<MessageType>([
+  MessageType.GuildBoost,
+  MessageType.GuildBoostTier1,
+  MessageType.GuildBoostTier2,
+  MessageType.GuildBoostTier3,
+]);
+
 export async function onMessageCreate(client: InferaClient, message: Message): Promise<void> {
+  // Discord's own "X just boosted" system message also covers repeat boosts,
+  // which don't change the member's premiumSince. Duplicates are suppressed.
+  if (message.inGuild() && BOOST_TYPES.has(message.type) && message.member) {
+    const values = await readConfig(client, message.guild.id).catch(() => null);
+    if (values) await sendBoostNotification(client, message.member, values);
+    return;
+  }
   if (!message.inGuild() || message.author.bot || message.system) return;
 
   const guild = message.guild;

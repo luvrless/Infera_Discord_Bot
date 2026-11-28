@@ -3,7 +3,7 @@ import type { Guild, GuildMember } from "discord.js";
 /** The minimum member shape placeholders need. */
 export type PlaceholderMember = Pick<GuildMember, "id" | "user"> & {
   joinedAt?: Date | null;
-  guild: Pick<Guild, "name" | "memberCount"> & { iconURL?: Guild["iconURL"] };
+  guild: Pick<Guild, "name" | "memberCount"> & { iconURL?: Guild["iconURL"]; premiumSubscriptionCount?: number | null; premiumTier?: number };
 };
 
 /**
@@ -39,6 +39,10 @@ export function applyPlaceholders(template: string, member: PlaceholderMember): 
     "{server_icon}": icon,
     "{created_at}": created,
     "{joined_at}": joined,
+    "{server.name}": member.guild.name,
+    "{server.boost.count}": String(member.guild.premiumSubscriptionCount ?? 0),
+    "{server.boost.tier}": String(member.guild.premiumTier ?? 0),
+    "{boost_count}": String(member.guild.premiumSubscriptionCount ?? 0),
     // Legacy names.
     "{user.name}": member.user.username,
     "{user.tag}": member.user.tag,
