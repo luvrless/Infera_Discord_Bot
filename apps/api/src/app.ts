@@ -2,7 +2,7 @@ import cookie from "@fastify/cookie";
 import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
 import websocket from "@fastify/websocket";
-import { ErrorCode, InferaError } from "@infera/shared";
+import { ErrorCode, InferaError, isOperator } from "@infera/shared";
 import Fastify, { type FastifyInstance } from "fastify";
 import type { WebSocket } from "ws";
 import {
@@ -64,6 +64,19 @@ export function createApp(): FastifyInstance {
         error: { code: ErrorCode.FORBIDDEN, message: "Cross-origin request rejected", details: [] },
       });
     }
+  });
+
+  // Operator "read-only" mode: nobody but the operator can change server settings.
+  app.addHook("preHandler", async (request, reply) => {
+    if (!["POST", "PATCH", "PUT", "DELETE"].includes(request.method)) return;
+    if (!request.url.startsWith(`${BASE_PATH}/guilds/`)) return;
+    const state = await services.platform.state().catch(() => null);
+    if (!state?.readOnly) return;
+    const session = await readSession(request).catch(() => null);
+    if (session && isOperator(session.user.id)) return;
+    return reply.code(503).send({
+      error: { code: ErrorCode.FEATURE_DISABLED, message: "The dashboard is temporarily read-only. Please try again later.", details: [] },
+    });
   });
 
   app.setErrorHandler(errorHandler);

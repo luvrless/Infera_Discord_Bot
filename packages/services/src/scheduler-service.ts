@@ -23,6 +23,12 @@ export class SchedulerService {
 
     let processed = 0;
     for (const task of due) {
+      // Frozen servers: postpone their scheduled posts. Expiring punishments
+      // (unban / timeout end) still run so members aren't punished longer.
+      if (task.type !== "unban" && task.type !== "timeout_expire" && this.isFrozen && (await this.isFrozen(task.guildId).catch(() => false))) {
+        await this.db.scheduledTask.updateMany({ where: { id: task.id, status: "pending" }, data: { runAt: new Date(Date.now() + 10 * 60_000) } });
+        continue;
+      }
       const claimed = await this.db.scheduledTask.updateMany({
         where: { id: task.id, status: "pending" },
         data: { status: "running", attempts: { increment: 1 } },
@@ -52,6 +58,9 @@ export class SchedulerService {
     }
     return processed;
   }
+
+  /** Set by the service container: whether a server is frozen by the operator. */
+  isFrozen: ((guildId: string) => Promise<boolean>) | null = null;
 
   private async execute(guildId: string, type: string, payload: Record<string, unknown>): Promise<void> {
     switch (type) {

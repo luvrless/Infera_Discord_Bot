@@ -1,7 +1,7 @@
 import type { OAuthSession, User } from "@infera/database";
 import { ErrorCode, InferaError } from "@infera/shared";
 import type { FastifyReply, FastifyRequest } from "fastify";
-import { SESSION_COOKIE, SESSION_TTL_MS, db, env } from "./config";
+import { SESSION_COOKIE, SESSION_TTL_MS, db, env, services } from "./config";
 import { decrypt, encrypt, hashToken, randomToken } from "./crypto";
 import { refreshAccessToken } from "./oauth";
 
@@ -94,6 +94,8 @@ export async function readSession(request: FastifyRequest): Promise<SessionConte
   if (!row || row.revokedAt || row.expiresAt.getTime() <= Date.now()) return null;
   const user = await db.user.findUnique({ where: { id: row.userId } });
   if (!user) return null;
+  // Banned from the website/dashboard by the INFERA operator.
+  if (await services.platform.isBlacklisted("dashboard", user.id).catch(() => false)) return null;
   if (Date.now() - row.lastUsedAt.getTime() > 5 * 60_000) {
     // Rolling session: each use extends the expiry window.
     const expiresAt = new Date(Date.now() + SESSION_TTL_MS);

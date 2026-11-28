@@ -36,8 +36,54 @@ function isGuildChannel(channel: { isDMBased(): boolean }): channel is GuildChan
   return !channel.isDMBased() && "guild" in channel;
 }
 
+/** Servers frozen from the operator panel. Refreshed every 20 seconds. */
+const frozenGuilds = new Set<string>();
+// These events must always run (joining, leaving, startup).
+const ALWAYS = new Set<string>([Events.ClientReady, Events.GuildCreate, Events.GuildDelete, Events.Debug, Events.Warn, Events.Error, Events.ShardReady, Events.ShardDisconnect, Events.ShardResume, Events.ShardReconnecting, Events.Raw, Events.CacheSweep, Events.GuildUpdate]);
+
+function guildIdOf(value: unknown): string | null {
+  if (!value || typeof value !== "object") return null;
+  const v = value as { guildId?: unknown; guild?: { id?: unknown }; message?: { guildId?: unknown } };
+  if (typeof v.guildId === "string") return v.guildId;
+  if (v.guild && typeof v.guild.id === "string") return v.guild.id;
+  if (v.message && typeof v.message.guildId === "string") return v.message.guildId;
+  return null;
+}
+
+/**
+ * A frozen server gets no INFERA features at all: every gateway event from it
+ * is dropped before any handler runs. Interactions get a short notice.
+ */
+function installFreeze(client: InferaClient): void {
+  const refresh = async () => {
+    const ids = await client.services.platform.listIds("frozen");
+    frozenGuilds.clear();
+    for (const id of ids) frozenGuilds.add(id);
+  };
+  void refresh().catch(() => undefined);
+  setInterval(() => void refresh().catch(() => undefined), 20_000).unref();
+
+  const emit = client.emit.bind(client) as (event: string, ...args: unknown[]) => boolean;
+  (client as unknown as { emit: (event: string, ...args: unknown[]) => boolean }).emit = (event: string, ...args: unknown[]) => {
+    if (frozenGuilds.size > 0 && !ALWAYS.has(event)) {
+      const guildId = guildIdOf(args[0]);
+      if (guildId && frozenGuilds.has(guildId)) {
+        if (event === Events.InteractionCreate) {
+          const interaction = args[0] as { isRepliable?: () => boolean; reply?: (options: unknown) => Promise<unknown> };
+          if (interaction.isRepliable?.()) {
+            void interaction.reply?.({ content: "🧊 INFERA has been frozen in this server by the INFERA team.", ephemeral: true }).catch(() => undefined);
+          }
+        }
+        return false;
+      }
+    }
+    return emit(event, ...args);
+  };
+}
+
 /** Attach every gateway listener. All handlers are individually guarded. */
 export function registerEvents(client: InferaClient): void {
+  installFreeze(client);
   client.once(Events.ClientReady, (ready) => {
     guard("ready", onReady(ready as InferaClient));
   });

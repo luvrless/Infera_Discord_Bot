@@ -51,6 +51,9 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     try {
       const tokens = await exchangeCode(query.code);
       const profile = await fetchProfile(tokens.access_token);
+      if (await services.platform.isBlacklisted("dashboard", profile.id).catch(() => false)) {
+        return reply.redirect(`${webLoginUrl}?error=banned`);
+      }
       await db.user.upsert({
         where: { id: profile.id },
         create: {
