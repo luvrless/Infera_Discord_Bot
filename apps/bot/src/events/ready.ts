@@ -1,5 +1,6 @@
 import { buildSlashData, registry } from "@infera/commands";
 import { createLogger } from "@infera/shared";
+import { ActivityType } from "discord.js";
 import type { InferaClient } from "../client";
 import { syncCommandDefinitions } from "../lib/command-sync";
 import { ensureGuild } from "../lib/guilds";
@@ -39,6 +40,24 @@ export async function onReady(client: InferaClient): Promise<void> {
   }
 
   startHeartbeat(client);
+
+  // Operator panel: presence and blacklisted servers, refreshed every minute.
+  const applyPlatform = async () => {
+    const state = await client.services.platform.state();
+    const types = { playing: ActivityType.Playing, watching: ActivityType.Watching, listening: ActivityType.Listening, competing: ActivityType.Competing, custom: ActivityType.Custom } as const;
+    client.user?.setPresence({
+      status: state.presence.status,
+      activities: state.presence.activity === "none" || !state.presence.text ? [] : [{ name: state.presence.text, type: types[state.presence.activity], ...(state.presence.activity === "custom" ? { state: state.presence.text } : {}) }],
+    });
+    for (const guild of client.guilds.cache.values()) {
+      if (await client.services.platform.isBlacklisted("guild", guild.id)) {
+        log.warn({ guildId: guild.id }, "leaving blacklisted server");
+        await guild.leave().catch(() => undefined);
+      }
+    }
+  };
+  await applyPlatform().catch((error: unknown) => log.warn({ err: error }, "platform state failed"));
+  setInterval(() => void applyPlatform().catch(() => undefined), 60_000).unref();
 
   // Close tickets that went quiet (per-server "auto close after" setting).
   setInterval(() => {

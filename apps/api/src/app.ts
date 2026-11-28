@@ -24,6 +24,7 @@ import { automationRoutes } from "./routes/automation";
 import { guildRoutes } from "./routes/guilds";
 import { moderationRoutes } from "./routes/moderation";
 import { systemRoutes } from "./routes/system";
+import { operatorRoutes } from "./routes/operator";
 
 export function createApp(): FastifyInstance {
   const app = Fastify({
@@ -82,6 +83,7 @@ export function createApp(): FastifyInstance {
   void app.register(automationRoutes);
   void app.register(systemRoutes);
   void app.register(dashboardRoutes);
+  void app.register(operatorRoutes);
 
   const stopBridge = startRealtimeBridge(app.log);
 

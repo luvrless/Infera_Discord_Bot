@@ -241,6 +241,17 @@ export class GuildConfigService {
     return this.snapshot(guildId, updated.version, next, updated.updatedAt);
   }
 
+  /** Replace a server's stored configuration (operator restore from a backup). */
+  async restoreRaw(guildId: string, data: string, actorId: string | null): Promise<void> {
+    await this.ensureGuildStub(guildId);
+    JSON.parse(data);
+    const updated = await this.db.guildConfig.update({ where: { guildId }, data: { data, version: { increment: 1 }, updatedBy: actorId } });
+    await this.cache.del(this.cacheKey(guildId));
+    await this.cache.del(this.modulesKey(guildId));
+    await this.invalidateCommandOverrides(guildId);
+    await this.realtime.publish(guildId, "config.updated", { section: "all", version: updated.version });
+  }
+
   private async ensureGuildStub(guildId: string): Promise<void> {
     const exists = await this.db.guild.findUnique({ where: { id: guildId }, select: { id: true } });
     if (!exists) {

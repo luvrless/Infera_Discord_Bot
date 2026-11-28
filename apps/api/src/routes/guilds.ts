@@ -461,6 +461,14 @@ export const guildRoutes: FastifyPluginAsync = async (app) => {
       bot: status,
       checkedAt: new Date().toISOString(),
       version: "1.0.0",
+      // Operator-controlled notices shown on the dashboard.
+      ...(await services.platform
+        .state()
+        .then((platform) => ({
+          notice: platform.dashboardBanner.text ? platform.dashboardBanner : null,
+          maintenance: platform.maintenance.enabled ? platform.maintenance.message : null,
+        }))
+        .catch(() => ({}))),
     };
   });
 };

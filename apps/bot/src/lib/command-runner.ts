@@ -5,6 +5,7 @@ import {
   PermissionLevel,
   createLogger,
   formatDuration,
+  isOperator,
   isPlatformOwner,
   translate,
 } from "@infera/shared";
@@ -68,6 +69,20 @@ export async function runCommand(
   let overrideCooldownMs: number | null = null;
 
   try {
+    // Platform rules from the operator panel.
+    if (!isOperator(context.user.id)) {
+      const platform = await client.services.platform.state();
+      if (await client.services.platform.isBlacklisted("user", context.user.id)) {
+        throw new InferaError("You can't use INFERA.", { code: ErrorCode.FORBIDDEN });
+      }
+      if (platform.maintenance.enabled) {
+        throw new InferaError(platform.maintenance.message, { code: ErrorCode.FEATURE_DISABLED });
+      }
+      if (platform.disabledCommands.includes(command.name)) {
+        throw new InferaError(`The ${command.name} command is temporarily disabled.`, { code: ErrorCode.FEATURE_DISABLED });
+      }
+    }
+
     if (command.ownerOnly && !isPlatformOwner(context.user.id)) {
       throw new InferaError("This command is restricted to platform owners", {
         code: ErrorCode.FORBIDDEN,
