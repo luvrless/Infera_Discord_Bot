@@ -14,6 +14,7 @@ import { ReminderService } from "./reminder-service";
 import { SchedulerService } from "./scheduler-service";
 import { SuggestionService } from "./suggestion-service";
 import { PlatformNotificationService } from "./platform-notification-service";
+import { PlatformService } from "./platform-service";
 import { TicketService } from "./ticket-service";
 
 export interface ServiceContainer {
@@ -29,6 +30,7 @@ export interface ServiceContainer {
   leveling: LevelingService;
   economy: EconomyService;
   tickets: TicketService;
+  platform: PlatformService;
   giveaways: GiveawayService;
   suggestions: SuggestionService;
   platformNotifications: PlatformNotificationService;
@@ -65,6 +67,7 @@ export function createServices(options: ServiceOptions): ServiceContainer {
   const giveaways = new GiveawayService(db, discord, config, realtime, analytics);
   const suggestions = new SuggestionService(db, discord, config, realtime);
   const platformNotifications = new PlatformNotificationService(db);
+  const platform = new PlatformService(db, cache);
   const reminders = new ReminderService(db);
   const scheduler = new SchedulerService(db, discord);
 
@@ -84,6 +87,7 @@ export function createServices(options: ServiceOptions): ServiceContainer {
     giveaways,
     suggestions,
     platformNotifications,
+    platform,
     reminders,
     scheduler,
   };
@@ -102,6 +106,7 @@ export { AnalyticsService } from "./analytics-service";
 export { AuditService } from "./audit-service";
 export { GuildConfigService, MODULES } from "./config-service";
 export { PlatformNotificationService, type PlatformNotificationView } from "./platform-notification-service";
+export { PlatformService } from "./platform-service";
 export { DiscordApi, guildMemberCount } from "./discord-api";
 export { EconomyService } from "./economy-service";
 export { GiveawayService } from "./giveaway-service";

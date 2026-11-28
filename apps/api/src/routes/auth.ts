@@ -1,4 +1,4 @@
-import { ErrorCode, InferaError } from "@infera/shared";
+import { ErrorCode, InferaError, isOperator } from "@infera/shared";
 import type { FastifyPluginAsync } from "fastify";
 import { BASE_PATH, STATE_COOKIE, db, env, services } from "../lib/config";
 import { randomToken } from "../lib/crypto";
@@ -95,6 +95,8 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       createdAt: session.row.createdAt.toISOString(),
       // Public identifier used to build the bot invite link.
       clientId: env.DISCORD_CLIENT_ID,
+      // Only true for the INFERA operator; shows the operator panel entry.
+      ...(isOperator(session.user.id) ? { operator: true } : {}),
     };
   });
 

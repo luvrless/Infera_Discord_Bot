@@ -1167,3 +1167,54 @@ model ApplicationEvent {
 
   @@index([submissionId])
 }
+
+// ---------------------------------------------------------------------------
+// Operator (platform owner) tooling. Never exposed to server admins.
+// ---------------------------------------------------------------------------
+
+/// Global platform switches: maintenance mode, bot presence, disabled commands.
+model PlatformSetting {
+  key       String   @id
+  /// JSON value
+  value     String   @default("null")
+  updatedBy String?
+  updatedAt DateTime @default(now()) @updatedAt
+}
+
+/// Users or servers banned from using INFERA. type: "user" | "guild"
+model PlatformBlacklist {
+  id        String   @id @default(cuid())
+  type      String
+  targetId  String
+  reason    String?
+  createdBy String
+  createdAt DateTime @default(now())
+
+  @@unique([type, targetId])
+}
+
+/// Every action taken in the operator panel.
+model OperatorAudit {
+  id        String   @id @default(cuid())
+  actorId   String
+  action    String
+  targetId  String?
+  metadata  String   @default("{}")
+  ip        String?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+/// Snapshot of a server's configuration taken before an operator reset/restore.
+model ConfigBackup {
+  id        String   @id @default(cuid())
+  guildId   String
+  data      String
+  version   Int      @default(1)
+  reason    String?
+  createdBy String?
+  createdAt DateTime @default(now())
+
+  @@index([guildId, createdAt])
+}

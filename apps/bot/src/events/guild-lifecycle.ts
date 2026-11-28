@@ -7,6 +7,14 @@ const log = createLogger("bot:guilds");
 
 export async function onGuildCreate(client: InferaClient, guild: Guild): Promise<void> {
   log.info({ guildId: guild.id, name: guild.name, members: guild.memberCount }, "joined guild");
+  // Operator panel: blacklisted servers, or new servers while invites are paused.
+  const blocked = await client.services.platform.isBlacklisted("guild", guild.id).catch(() => false);
+  const state = await client.services.platform.state().catch(() => null);
+  if (blocked || (state && !state.allowNewServers)) {
+    log.warn({ guildId: guild.id, blocked }, "leaving server (operator rule)");
+    await guild.leave().catch(() => undefined);
+    return;
+  }
   forgetGuild(guild.id);
   await ensureGuild(client, guild);
 

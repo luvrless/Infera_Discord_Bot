@@ -311,6 +311,11 @@ export class DiscordApi {
     }
   }
 
+  /** Make the bot leave a server. */
+  async leaveGuild(guildId: string): Promise<void> {
+    await this.request("delete", Routes.userGuild(guildId));
+  }
+
   /** DM a user (opens the DM channel first). Fails if the user closed DMs. */
   async sendDm(
     userId: string,

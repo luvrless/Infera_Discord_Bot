@@ -12,3 +12,4 @@ export * from "./config/registry";
 export * from "./localization";
 export * from "./changelog";
 export * from "./tickets";
+export * from "./operator";
