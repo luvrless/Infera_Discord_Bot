@@ -21,6 +21,19 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "2026.11.28-2",
+    date: "2026-11-28",
+    title: "Boost notifications and a cleaner dashboard",
+    summary: "Thank your boosters automatically, plus a tidier dashboard sidebar. Your existing settings were not changed.",
+    features: [
+      "Boost notifications: announce every server boost with a custom message or embed (Welcome & Goodbye page).",
+      "New placeholders: {server.boost.count}, {server.name} and {user.id}.",
+    ],
+    fixes: ["Tickets and Analytics now have tabs inside the page instead of extra sidebar entries."],
+    system: ["Anti-nuke and anti-raid stay off for new servers until you enable them. Existing servers keep their settings."],
+    downtime: "The bot restarts once for about a minute while this update is installed.",
+  },
+  {
     version: "2026.11.28",
     date: "2026-11-28",
     title: "Smoother dashboard, easier leveling and update notifications",

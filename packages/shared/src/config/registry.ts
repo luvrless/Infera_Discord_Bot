@@ -239,6 +239,18 @@ export const CONFIG_DEFINITIONS: ConfigDefinition[] = [
   snowflakeList("welcome.autoroles", "welcome", "Roles granted automatically on join."),
 
   // ---------------------------------------------------------------- goodbye
+  // Server boost notifications (independent from welcome/goodbye).
+  bool("boost.enabled", "welcome", false, "Announce when someone boosts the server."),
+  snowflake("boost.channel_id", "welcome", "Channel for boost notifications."),
+  str("boost.message", "welcome", "{user} just boosted **{server}**! 💎", "Message text. Supports placeholders."),
+  bool("boost.mention", "welcome", true, "Mention the booster above the embed."),
+  bool("boost.embed.enabled", "welcome", true, "Send the boost notification as an embed."),
+  str("boost.embed.title", "welcome", "Thank you for boosting! 💎", "Boost embed title.", { max: 256 }),
+  str("boost.embed.description", "welcome", "{user} boosted **{server}**. We now have **{server.boost.count}** boosts!", "Boost embed description.", { max: 4000 }),
+  color("boost.embed.color", "welcome", "#F47FFF", "Boost embed colour."),
+  str("boost.embed.footer", "welcome", "", "Boost embed footer.", { max: 2048 }),
+  bool("boost.embed.avatar", "welcome", true, "Show the booster's avatar as the thumbnail."),
+  str("boost.embed.image", "welcome", "", "Optional large image URL.", { max: 500 }),
   bool("goodbye.enabled", "goodbye", false, "Send a message when members leave."),
   snowflake("goodbye.channel_id", "goodbye", "Channel for goodbye messages."),
   str("goodbye.message", "goodbye", "**{user}** left the server.", "Goodbye message. Supports placeholders."),

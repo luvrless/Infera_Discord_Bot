@@ -5,6 +5,7 @@ import { enforceAntiRaid } from "../lib/antiraid";
 import { ensureGuild, readConfig } from "../lib/guilds";
 import { sendLog } from "../lib/logging";
 import { sendGoodbye, sendWelcome } from "../lib/welcome";
+import { sendBoostNotification } from "../lib/boost";
 
 const log = createLogger("bot:members");
 
@@ -89,6 +90,12 @@ export async function onGuildMemberUpdate(
   oldMember: GuildMember | PartialGuildMember,
   newMember: GuildMember,
 ): Promise<void> {
+  // A member started boosting (premiumSince went from empty to a date).
+  if (!oldMember.partial && !oldMember.premiumSince && newMember.premiumSince) {
+    const values = await readConfig(client, newMember.guild.id);
+    if (values) await sendBoostNotification(client, newMember, values);
+  }
+
   if (!oldMember.partial && oldMember.nickname !== newMember.nickname) {
     await sendLog(client, newMember.guild, "member_events", {
       title: "Nickname changed",
