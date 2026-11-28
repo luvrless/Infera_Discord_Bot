@@ -105,7 +105,11 @@ export async function onMessageCreate(client: InferaClient, message: Message): P
   if (outcome) return;
 
   // Record ticket conversations so /ticketclose can produce a real transcript.
-  if (message.channel.isTextBased() && "name" in message.channel && message.channel.name?.startsWith("ticket-")) {
+  if (
+    message.channel.isTextBased() &&
+    "name" in message.channel &&
+    (message.channel.name?.startsWith("ticket-") || ("topic" in message.channel && message.channel.topic?.startsWith("Ticket for ")))
+  ) {
     const ticket = await client.services.tickets.getByChannel(guild.id, message.channelId).catch(() => null);
     if (ticket) {
       await client.services.tickets

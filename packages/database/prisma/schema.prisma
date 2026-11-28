@@ -50,6 +50,7 @@ model Guild {
   modules             GuildModule[]
   permissions         GuildPermission[]
   commandOverrides    CommandOverride[]
+  ticketCategories    TicketCategory[]
   commandUsage        CommandUsage[]
   cases               ModerationCase[]
   warnings            ModerationWarning[]
@@ -601,12 +602,47 @@ model TicketPanel {
   title       String
   description String?
   categoryId  String?
+  /// "default" (buttons), "select" (dropdown) or "form" (buttons, always with a form).
+  style       String   @default("default")
+  /// JSON panel design: embed, select placeholder and the ordered category ids.
+  config      String   @default("{}")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
 
   @@index([guildId])
+}
+
+/// One ticket option (button / dropdown entry) with its own behaviour.
+model TicketCategory {
+  id          String   @id @default(cuid())
+  guildId     String
+  name        String
+  description String?
+  emoji       String?
+  position    Int      @default(0)
+  /// JSON settings: roles, naming, limits, form questions, messages...
+  settings    String   @default("{}")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@index([guildId])
+}
+
+/// Internal staff note on a ticket (never shown to the ticket owner).
+model TicketNote {
+  id        String   @id @default(cuid())
+  ticketId  String
+  authorId  String
+  content   String
+  createdAt DateTime @default(now())
+
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId])
 }
 
 model Ticket {
@@ -624,9 +660,16 @@ model Ticket {
   closedAt    DateTime?
   closedBy    String?
   transcript  String?
+  categoryId     String?
+  /// JSON form answers: [{ question, answer }]
+  answers        String?
+  transcriptHtml String?
+  lastActivityAt DateTime?
+  closeReason    String?
 
   guild    Guild           @relation(fields: [guildId], references: [id], onDelete: Cascade)
   messages TicketMessage[]
+  notes    TicketNote[]
 
   @@unique([guildId, number])
   @@index([guildId, status])

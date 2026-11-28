@@ -6,6 +6,7 @@ import { runCommand } from "../lib/command-runner";
 import { ensureGuild, readConfig } from "../lib/guilds";
 import { toPermissionInput } from "../lib/permissions";
 import { collectSlashArgs } from "../lib/slash-options";
+import { handleTicketInteraction } from "../lib/ticket-interactions";
 
 const log = createLogger("bot:interactions");
 
@@ -136,6 +137,9 @@ export async function onInteractionCreate(
   client: InferaClient,
   interaction: Interaction,
 ): Promise<void> {
+  if ((interaction.isButton() || interaction.isStringSelectMenu() || interaction.isModalSubmit()) && (await handleTicketInteraction(client, interaction))) {
+    return;
+  }
   if (interaction.isButton() || interaction.isStringSelectMenu()) {
     if (interaction.customId.startsWith("role:")) {
       await handleRoleComponent(client, interaction);

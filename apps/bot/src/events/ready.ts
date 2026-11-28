@@ -40,6 +40,11 @@ export async function onReady(client: InferaClient): Promise<void> {
 
   startHeartbeat(client);
 
+  // Close tickets that went quiet (per-server "auto close after" setting).
+  setInterval(() => {
+    client.services.tickets.closeInactive().catch((error: unknown) => log.warn({ err: error }, "auto-close failed"));
+  }, 10 * 60 * 1000).unref();
+
   // Release-note DMs to server owners run in the background and never block startup.
   setTimeout(() => {
     deliverUpdateNotices(client).catch((error: unknown) =>

@@ -314,6 +314,11 @@ export const CONFIG_DEFINITIONS: ConfigDefinition[] = [
   num("tickets.max_open_per_user", "tickets", 3, "Maximum open tickets per user.", { min: 1, max: 25 }),
   bool("tickets.close_dm", "tickets", true, "DM the transcript when a ticket closes."),
   enumOf("tickets.default_priority", "tickets", ["low", "normal", "high", "urgent"], "normal", "Default ticket priority."),
+  enumOf("tickets.close_action", "tickets", ["delete", "lock"], "delete", "Delete the channel on close, or lock it so it can be reopened."),
+  snowflake("tickets.log_channel", "tickets", "Channel that receives ticket activity logs."),
+  num("tickets.auto_close_hours", "tickets", 0, "Close tickets with no messages for this many hours. 0 disables.", { min: 0, max: 720 }),
+  stringList("tickets.close_reasons", "tickets", "Preset reasons offered when closing a ticket."),
+  str("tickets.close_message", "tickets", "This ticket has been closed. Thanks for reaching out!", "Message DMed to the ticket owner on close.", { max: 1000 }),
 
   // -------------------------------------------------------------- giveaways
   bool("giveaways.enabled", "giveaways", true, "Enable giveaways."),

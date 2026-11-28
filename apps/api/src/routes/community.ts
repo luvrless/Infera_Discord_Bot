@@ -263,12 +263,13 @@ export const communityRoutes: FastifyPluginAsync = async (app) => {
     const access = await assertGuildAccess(session, guildId, { requireBot: true });
     requireModerator(access);
     const status = stringQuery((request.query as Record<string, unknown>).status);
-    const [tickets, stats, panels] = await Promise.all([
+    const [tickets, stats, panels, categories] = await Promise.all([
       services.tickets.list(guildId, status),
       services.tickets.stats(guildId),
       services.tickets.panels(guildId),
+      services.tickets.categories(guildId),
     ]);
-    return { tickets, stats, panels };
+    return { tickets, stats, panels, categories };
   });
 
   app.post(`${BASE_PATH}/guilds/:guildId/tickets/:ticketId/:action`, async (request) => {
@@ -294,7 +295,110 @@ export const communityRoutes: FastifyPluginAsync = async (app) => {
       const body = (request.body ?? {}) as { priority?: string };
       return { ticket: await services.tickets.setPriority(guildId, ticketId, body.priority ?? "normal") };
     }
+    if (action === "unclaim") {
+      return { ticket: await services.tickets.unclaim(guildId, ticketId, access.session.user.id) };
+    }
+    if (action === "delete") {
+      requireConfigAccess(access);
+      return { ticket: await services.tickets.deleteTicket(guildId, ticketId, access.session.user.id) };
+    }
+    if (action === "transfer") {
+      const body = (request.body ?? {}) as { categoryId?: string };
+      if (!body.categoryId) throw new InferaError("Choose a ticket option to move to", { code: ErrorCode.VALIDATION_ERROR });
+      return { ticket: await services.tickets.transfer(guildId, ticketId, body.categoryId, access.session.user.id) };
+    }
     throw new InferaError("Unsupported ticket action", { code: ErrorCode.VALIDATION_ERROR });
+  });
+
+  // ------------------------------------------------- ticket categories
+  app.get(`${BASE_PATH}/guilds/:guildId/tickets/categories`, async (request) => {
+    const session = await requireSession(request);
+    const { guildId } = request.params as { guildId: string };
+    const access = await assertGuildAccess(session, guildId, { requireBot: true });
+    requireModerator(access);
+    return { categories: await services.tickets.categories(guildId) };
+  });
+
+  app.post(`${BASE_PATH}/guilds/:guildId/tickets/categories`, async (request) => {
+    const session = await requireSession(request);
+    const { guildId } = request.params as { guildId: string };
+    const access = await assertGuildAccess(session, guildId, { requireBot: true });
+    requireConfigAccess(access);
+    const body = (request.body ?? {}) as { name?: string; description?: string | null; emoji?: string | null; position?: number; settings?: unknown };
+    const category = await services.tickets.saveCategory(guildId, { name: body.name ?? "", description: body.description, emoji: body.emoji, position: body.position, settings: body.settings });
+    await services.audit.record({ guildId, actorId: access.session.user.id, action: "tickets.category.create", targetId: category.id });
+    return { category };
+  });
+
+  app.patch(`${BASE_PATH}/guilds/:guildId/tickets/categories/:categoryId`, async (request) => {
+    const session = await requireSession(request);
+    const { guildId, categoryId } = request.params as { guildId: string; categoryId: string };
+    const access = await assertGuildAccess(session, guildId, { requireBot: true });
+    requireConfigAccess(access);
+    const body = (request.body ?? {}) as { name?: string; description?: string | null; emoji?: string | null; position?: number; settings?: unknown };
+    const current = await services.tickets.category(guildId, categoryId);
+    const category = await services.tickets.saveCategory(guildId, {
+      id: categoryId,
+      name: body.name ?? current.name,
+      description: body.description === undefined ? current.description : body.description,
+      emoji: body.emoji === undefined ? current.emoji : body.emoji,
+      position: body.position ?? current.position,
+      settings: body.settings === undefined ? current.settings : { ...current.settings, ...(body.settings as object) },
+    });
+    await services.audit.record({ guildId, actorId: access.session.user.id, action: "tickets.category.update", targetId: categoryId });
+    return { category };
+  });
+
+  app.delete(`${BASE_PATH}/guilds/:guildId/tickets/categories/:categoryId`, async (request) => {
+    const session = await requireSession(request);
+    const { guildId, categoryId } = request.params as { guildId: string; categoryId: string };
+    const access = await assertGuildAccess(session, guildId, { requireBot: true });
+    requireConfigAccess(access);
+    await services.tickets.deleteCategory(guildId, categoryId);
+    await services.audit.record({ guildId, actorId: access.session.user.id, action: "tickets.category.delete", targetId: categoryId });
+    return { removed: true };
+  });
+
+  // ------------------------------------------------------ notes & transcripts
+  app.get(`${BASE_PATH}/guilds/:guildId/tickets/:ticketId/notes`, async (request) => {
+    const session = await requireSession(request);
+    const { guildId, ticketId } = request.params as { guildId: string; ticketId: string };
+    const access = await assertGuildAccess(session, guildId, { requireBot: true });
+    requireModerator(access);
+    return { notes: await services.tickets.notes(guildId, ticketId) };
+  });
+
+  app.post(`${BASE_PATH}/guilds/:guildId/tickets/:ticketId/notes`, async (request) => {
+    const session = await requireSession(request);
+    const { guildId, ticketId } = request.params as { guildId: string; ticketId: string };
+    const access = await assertGuildAccess(session, guildId, { requireBot: true });
+    requireModerator(access);
+    const body = (request.body ?? {}) as { content?: string };
+    return { note: await services.tickets.addNote(guildId, ticketId, access.session.user.id, body.content ?? "") };
+  });
+
+  app.delete(`${BASE_PATH}/guilds/:guildId/tickets/:ticketId/notes/:noteId`, async (request) => {
+    const session = await requireSession(request);
+    const { guildId, ticketId, noteId } = request.params as { guildId: string; ticketId: string; noteId: string };
+    const access = await assertGuildAccess(session, guildId, { requireBot: true });
+    requireModerator(access);
+    await services.tickets.deleteNote(guildId, ticketId, noteId);
+    return { removed: true };
+  });
+
+  app.get(`${BASE_PATH}/guilds/:guildId/tickets/:ticketId/transcript`, async (request, reply) => {
+    const session = await requireSession(request);
+    const { guildId, ticketId } = request.params as { guildId: string; ticketId: string };
+    const access = await assertGuildAccess(session, guildId, { requireBot: true });
+    requireModerator(access);
+    const html = await services.tickets.transcriptHtml(guildId, ticketId);
+    if (!html) throw new InferaError("No transcript was saved for this ticket", { code: ErrorCode.NOT_FOUND });
+    // Served as a download so it never runs in the dashboard's origin.
+    return reply
+      .header("content-type", "text/html; charset=utf-8")
+      .header("content-disposition", `attachment; filename="ticket-${ticketId}.html"`)
+      .header("content-security-policy", "default-src 'none'; style-src 'unsafe-inline'")
+      .send(html);
   });
 
   app.post(`${BASE_PATH}/guilds/:guildId/tickets/panels`, async (request) => {
@@ -302,13 +406,15 @@ export const communityRoutes: FastifyPluginAsync = async (app) => {
     const { guildId } = request.params as { guildId: string };
     const access = await assertGuildAccess(session, guildId, { requireBot: true });
     requireConfigAccess(access);
-    const body = (request.body ?? {}) as { title?: string; description?: string; channelId?: string; categoryId?: string };
+    const body = (request.body ?? {}) as { title?: string; description?: string; channelId?: string; categoryId?: string; style?: string; config?: unknown };
     if (!body.title?.trim()) throw new InferaError("A panel title is required", { code: ErrorCode.VALIDATION_ERROR });
     const panel = await services.tickets.createPanel(guildId, {
       title: body.title.trim().slice(0, 120),
       description: body.description?.slice(0, 2000),
       channelId: body.channelId,
       categoryId: body.categoryId,
+      style: body.style,
+      config: body.config,
     });
     return { panel };
   });

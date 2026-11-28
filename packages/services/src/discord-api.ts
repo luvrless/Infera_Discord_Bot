@@ -298,6 +298,29 @@ export class DiscordApi {
   }
 
   // -------------------------------------------------------------- channels
+  /** Send a message with file attachments (e.g. HTML transcripts). */
+  async sendFiles(
+    channelId: string,
+    body: Record<string, unknown>,
+    files: Array<{ name: string; data: Buffer; contentType?: string }>,
+  ): Promise<DiscordMessage> {
+    try {
+      return (await this.rest.post(Routes.channelMessages(channelId), { body, files })) as DiscordMessage;
+    } catch (error) {
+      throw this.translateError(error, Routes.channelMessages(channelId));
+    }
+  }
+
+  /** DM a user (opens the DM channel first). Fails if the user closed DMs. */
+  async sendDm(
+    userId: string,
+    body: Record<string, unknown>,
+    files: Array<{ name: string; data: Buffer; contentType?: string }> = [],
+  ): Promise<DiscordMessage> {
+    const channel = (await this.request("post", Routes.userChannels(), { body: { recipient_id: userId } })) as { id: string };
+    return files.length ? this.sendFiles(channel.id, body, files) : this.sendMessage(channel.id, body);
+  }
+
   async createChannel(guildId: string, body: Record<string, unknown>, reason?: string): Promise<DiscordChannel> {
     return this.request("post", Routes.guildChannels(guildId), { body, reason });
   }
