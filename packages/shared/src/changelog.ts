@@ -21,6 +21,22 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "2026.11.28-3",
+    date: "2026-11-28",
+    title: "The new ticket system",
+    summary: "Tickets were rebuilt: three panel styles, ticket options with their own forms and staff roles, and much better ticket management. Existing panels and tickets keep working.",
+    features: [
+      "Three panel styles: buttons, a select menu, or forms that open before the ticket.",
+      "Panel builder with live preview: title, description, colour, author, thumbnail, image, footer and fields.",
+      "Ticket options: each with its own emoji, description, form (up to 5 questions incl. dropdowns), staff roles, limits and messages.",
+      "Claim/unclaim, close with reasons, reopen, delete, move between options, priorities and private staff notes.",
+      "HTML transcripts, a ticket log channel and auto-closing of inactive tickets.",
+    ],
+    fixes: ["Ticket transcripts now work with any ticket channel name."],
+    system: ["Your existing ticket settings and panels were not changed."],
+    downtime: "The bot restarts once for about a minute while this update is installed.",
+  },
+  {
     version: "2026.11.28-2",
     date: "2026-11-28",
     title: "Boost notifications and a cleaner dashboard",

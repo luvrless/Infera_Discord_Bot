@@ -8,7 +8,7 @@ import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import { createRobloxServices } from "@infera/integrations";
 import type { DiscordMember } from "@infera/services";
-import { DiscordPermissions, ErrorCode, InferaError, isValidEventName } from "@infera/shared";
+import { DiscordPermissions, ErrorCode, InferaError, buildPanelMessage, isValidEventName, normalizePanelConfig } from "@infera/shared";
 import type { FastifyPluginAsync } from "fastify";
 import { BASE_PATH, cache, db, services } from "../lib/config";
 import { assertGuildAccess, requireConfigAccess, requireModerator } from "../lib/auth";
@@ -342,30 +342,22 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
     if (!values["tickets.enabled"]) {
       throw new InferaError("Enable the ticket system before publishing a panel", { code: ErrorCode.FEATURE_DISABLED });
     }
-    const color = /^#[0-9a-f]{6}$/i.test(body.color ?? "") ? Number.parseInt(body.color!.slice(1), 16) : 0x8b5cf6;
-    const message = await services.discord.sendMessage(channelId, {
-      embeds: [
-        {
-          title: panel.title.slice(0, 256),
-          description: panel.description?.slice(0, 4096) || "Press the button below to open a ticket.",
-          color,
-          footer: { text: "INFERA tickets" },
-        },
-      ],
-      components: [
-        {
-          type: 1,
-          components: [
-            {
-              type: 2,
-              style: 1,
-              label: (body.buttonLabel ?? "Open ticket").slice(0, 80) || "Open ticket",
-              custom_id: `ticket:open:${panel.id}`,
-            },
-          ],
-        },
-      ],
-    });
+    let rawConfig: unknown = {};
+    try {
+      rawConfig = JSON.parse(panel.config);
+    } catch {
+      rawConfig = {};
+    }
+    const config = normalizePanelConfig(rawConfig, { title: panel.title, description: panel.description });
+    if (body.color && /^#[0-9a-f]{6}$/i.test(body.color) && !(rawConfig as { embed?: unknown }).embed) config.embed.color = body.color;
+    const categories = await services.tickets.categories(guildId);
+    const payload = buildPanelMessage(panel, config, categories);
+    // Update the already published message in place when possible.
+    let message: { id: string } | null = null;
+    if (panel.messageId && panel.channelId === channelId) {
+      message = await services.discord.editMessage(channelId, panel.messageId, payload).catch(() => null);
+    }
+    if (!message) message = await services.discord.sendMessage(channelId, payload);
     await db.ticketPanel.update({ where: { id: panel.id }, data: { channelId, messageId: message.id } });
     await services.audit.record({
       guildId,
@@ -588,7 +580,8 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
     requireConfigAccess(access);
     const existing = await db.ticketPanel.findFirst({ where: { id: panelId, guildId } });
     if (!existing) throw new InferaError("Ticket panel not found", { code: ErrorCode.NOT_FOUND });
-    const body = (request.body ?? {}) as { title?: string; description?: string | null; channelId?: string | null; categoryId?: string | null };
+    const body = (request.body ?? {}) as { title?: string; description?: string | null; channelId?: string | null; categoryId?: string | null; style?: string; config?: unknown };
+    const nextConfig = body.config === undefined ? undefined : JSON.stringify(normalizePanelConfig(body.config, { title: body.title ?? existing.title, description: body.description ?? existing.description }));
     const panel = await db.ticketPanel.update({
       where: { id: existing.id },
       data: {
@@ -596,6 +589,8 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
         description: body.description === undefined ? undefined : body.description ? body.description.slice(0, 1000) : null,
         channelId: body.channelId === undefined ? undefined : body.channelId && SNOWFLAKE.test(body.channelId) ? body.channelId : null,
         categoryId: body.categoryId === undefined ? undefined : body.categoryId && SNOWFLAKE.test(body.categoryId) ? body.categoryId : null,
+        style: body.style && ["default", "select", "form"].includes(body.style) ? body.style : undefined,
+        config: nextConfig,
       },
     });
     return { panel };
