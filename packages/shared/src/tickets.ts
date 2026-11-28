@@ -77,6 +77,10 @@ export interface TicketPanelConfig {
   selectPlaceholder: string;
   /** Ordered ticket category ids shown on this panel. */
   categoryIds: string[];
+  /** Formulary style: the single "create ticket" button. */
+  button: { label: string; emoji: string; style: TicketButtonStyle };
+  /** Formulary style: the form shown when the button is pressed. */
+  form: { title: string; topicLabel: string; questions: TicketQuestion[] };
 }
 
 export const MAX_FORM_QUESTIONS = 5;
@@ -167,6 +171,8 @@ export function normalizeCategorySettings(raw: unknown): TicketCategorySettings 
 export function normalizePanelConfig(raw: unknown, fallback: { title?: string; description?: string | null } = {}): TicketPanelConfig {
   const value = (raw ?? {}) as Record<string, unknown>;
   const embed = (value.embed ?? {}) as Record<string, unknown>;
+  const button = (value.button ?? {}) as Record<string, unknown>;
+  const form = (value.form ?? {}) as Record<string, unknown>;
   const fields = Array.isArray(embed.fields)
     ? embed.fields.slice(0, 10).map((field) => {
         const f = (field ?? {}) as Record<string, unknown>;
@@ -188,6 +194,16 @@ export function normalizePanelConfig(raw: unknown, fallback: { title?: string; d
     },
     selectPlaceholder: text(value.selectPlaceholder, 150, "Select an option to get help") || "Select an option to get help",
     categoryIds: Array.isArray(value.categoryIds) ? value.categoryIds.filter((id): id is string => typeof id === "string").slice(0, 25) : [],
+    button: {
+      label: text(button.label, 80, "Create ticket") || "Create ticket",
+      emoji: text(button.emoji, 64, "🎫"),
+      style: pick(button.style, ["primary", "secondary", "success", "danger"] as const, "primary"),
+    },
+    form: {
+      title: text(form.title, 45, "Create a ticket") || "Create a ticket",
+      topicLabel: text(form.topicLabel, 45, "What do you need help with?") || "What do you need help with?",
+      questions: Array.isArray(form.questions) ? form.questions.slice(0, MAX_FORM_QUESTIONS).map(normalizeQuestion) : [],
+    },
   };
 }
 
@@ -235,8 +251,17 @@ export function buildPanelMessage(
     : categories;
 
   let components: Record<string, unknown>[];
-  if (ordered.length === 0) {
-    // Panels without categories keep the original single button.
+  if (panel.style === "form") {
+    // Formulary: one button that opens a form (topic dropdown + questions).
+    const emoji = parseEmoji(config.button.emoji);
+    components = [
+      {
+        type: 1,
+        components: [{ type: 2, style: BUTTON_STYLE[config.button.style], label: config.button.label, custom_id: `tkt:pf:${panel.id}`, ...(emoji ? { emoji } : {}) }],
+      },
+    ];
+  } else if (ordered.length === 0) {
+    // Panels without options keep the original single button.
     components = [{ type: 1, components: [{ type: 2, style: 1, label: "Open ticket", custom_id: `ticket:open:${panel.id}` }] }];
   } else if (panel.style === "select") {
     components = [
@@ -260,11 +285,12 @@ export function buildPanelMessage(
       },
     ];
   } else {
+    // Default: one button per option; pressing it opens the ticket right away.
     const buttons = ordered.slice(0, 25).map((category) => ({
       type: 2,
       style: BUTTON_STYLE[category.settings.buttonStyle],
       label: (category.settings.buttonLabel || category.name).slice(0, 80),
-      custom_id: panel.style === "form" ? `tkt:fc:${category.id}` : `tkt:c:${category.id}`,
+      custom_id: `tkt:d:${category.id}`,
       ...(parseEmoji(category.emoji) ? { emoji: parseEmoji(category.emoji) } : {}),
     }));
     components = [];
